@@ -234,6 +234,7 @@ struct usbip_iso_packet_descriptor {
 enum usbip_side {
 	USBIP_VHCI,
 	USBIP_STUB,
+	USBIP_VUDC,
 };
 
 /* event handler */
