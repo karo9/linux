@@ -741,6 +741,12 @@ int usbip_recv_xbuff(struct usbip_device *ud, struct urb *urb)
 	if (!(size > 0))
 		return 0;
 
+	/* 
+	if (ud->side == USBIP_STUB) 
+		printk(KERN_ERR "Odbieram dodatkowy transfer_buffer - po stronie stub");
+	else
+		printk(KERN_ERR "Odbieram dodatkowy transfer_buffer - po stronie vhci");
+	*/
 	ret = usbip_recv(ud->tcp_socket, urb->transfer_buffer, size);
 	if (ret != size) {
 		dev_err(&urb->dev->dev, "recv xbuf, %d\n", ret);
