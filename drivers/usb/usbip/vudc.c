@@ -331,12 +331,121 @@ void usbip_dump_urb2(struct urb *urb)
 	printk(KERN_ERR "   complete              :%p\n", urb->complete);
 }
 
+static void make_transfer(struct urb *urb, struct vep *ep)
+{
+	struct vrequest *req;
+	int to_host;
+	void *ubuf, *rbuf;
+
+top:
+	list_for_each_entry(req, &ep->queue, queue) {
+		unsigned host_len, dev_len, len;
+
+		host_len = urb->transfer_buffer_length - urb->actual_length;
+		dev_len = req->req.length - req->req.actual;
+		len = min(host_len, dev_len);
+		printk(KERN_ERR "make transfer %u i %u\n", host_len, dev_len);
+
+		ubuf = urb->transfer_buffer + urb->actual_length;
+		rbuf = req->req.buf + req->req.actual;
+
+		to_host = usb_pipein(urb->pipe);
+		//TODO WARNING DANGEROUS!!!
+		to_host = 1;
+
+		if(to_host)
+			memcpy(ubuf, rbuf, len);
+		else
+			memcpy(rbuf, ubuf, len);
+
+		req->req.actual += len;
+		urb->actual_length += len;
+		req->req.status = 0;
+		//list_del_init(&ep->queue);
+		list_del_init(&req->queue);
+		usb_gadget_giveback_request(&ep->ep, &req->req);
+		printk(KERN_ERR "ostatnie make transfer\n");
+		goto top;
+	}
+
+}
+
+static inline void setup_base_pdu(struct usbip_header_basic *base,
+				  __u32 command, __u32 seqnum)
+{
+	base->command	= command;
+	base->seqnum	= seqnum;
+	base->devid	= 0;
+	base->ep	= 0;
+	base->direction = 0;
+}
+
+static void setup_ret_submit_pdu(struct usbip_header *rpdu, struct urb *urb)
+{
+	struct vrequest *priv = (struct vrequest *) urb->context;
+
+	setup_base_pdu(&rpdu->base, USBIP_RET_SUBMIT, priv->seqnum);
+	usbip_pack_pdu(rpdu, urb, USBIP_RET_SUBMIT, 1);
+}
+
+
+static void send_respond(struct urb *urb, struct vudc *sdev)
+{
+
+		struct usbip_header pdu_header;
+		struct usbip_iso_packet_descriptor *iso_buffer = NULL;
+		struct kvec *iov = NULL;
+		int iovnum = 0;
+		size_t txsize;
+		struct msghdr msg;
+
+		txsize = 0;
+		memset(&pdu_header, 0, sizeof(pdu_header));
+		memset(&msg, 0, sizeof(msg));
+
+		if (usb_pipetype(urb->pipe) == PIPE_ISOCHRONOUS)
+			iovnum = 2 + urb->number_of_packets;
+		else
+			iovnum = 2;
+
+		iov = kcalloc(iovnum, sizeof(struct kvec), GFP_KERNEL);
+
+		iovnum = 0;
+
+		/* 1. setup usbip_header */
+		setup_ret_submit_pdu(&pdu_header, urb);
+		usbip_dbg_stub_tx("setup txdata seqnum: %d urb: %p\n",
+				  pdu_header.base.seqnum, urb);
+		usbip_header_correct_endian(&pdu_header, 1);
+
+		iov[iovnum].iov_base = &pdu_header;
+		iov[iovnum].iov_len  = sizeof(pdu_header);
+		iovnum++;
+		txsize += sizeof(pdu_header);
+
+		/* 2. setup transfer buffer */
+		//if (usb_pipein(urb->pipe) &&
+		 //   usb_pipetype(urb->pipe) != PIPE_ISOCHRONOUS &&
+		  //  urb->actual_length > 0) {
+			iov[iovnum].iov_base = urb->transfer_buffer;
+			iov[iovnum].iov_len  = urb->actual_length;
+			iovnum++;
+			txsize += urb->actual_length;
+		//}
+
+		kernel_sendmsg(sdev->udev.tcp_socket, &msg,
+						iov,  iovnum, txsize);
+
+		kfree(iov);
+		kfree(iso_buffer);
+}
+
 static void stub_recv_cmd_submit(struct vudc *sdev,
 				 struct usbip_header *pdu)
 {
 	int ret;
 	struct vrequest *priv;
-	struct usbip_device *ud = &sdev->udev;
+	//struct usbip_device *ud = &sdev->udev;
 	size_t size;
 	//int pipe = get_pipe(sdev, pdu->base.ep, pdu->base.direction);
 
@@ -344,6 +453,8 @@ static void stub_recv_cmd_submit(struct vudc *sdev,
 
 	priv->seqnum = pdu->base.seqnum;
 	priv->sdev = sdev;
+	printk(KERN_ERR "Ustawiam %p priv->seqnum na %d", priv, pdu->base.seqnum);
+	printk(KERN_ERR "Otrzymuje: %p priv->seqnum na %lu", priv, priv->seqnum);
 	//todo moze sie przyda
 	//list_add_tail(&priv->list, &sdev->priv_init);
 
@@ -376,13 +487,19 @@ static void stub_recv_cmd_submit(struct vudc *sdev,
 	//ret = usb_submit_urb(priv->urb, GFP_KERNEL);
 	
 
-	sdev->driver->setup(&sdev->gadget, priv->urb->setup_packet);
+	printk(KERN_ERR "Przed setup\n");
+	sdev->driver->setup(&sdev->gadget, (struct usb_ctrlrequest *)priv->urb->setup_packet);
+
+	printk(KERN_ERR "Przed make transfer\n");
+	make_transfer(priv->urb, &sdev->ep[0]);
+	printk(KERN_ERR "Przed respond\n");
+	send_respond(priv->urb, sdev);
 
 	usbip_dbg_stub_rx("Leave\n");
 }
 
 /* recv a pdu */
-static void stub_rx_pdu(struct usbip_device *ud)
+static int stub_rx_pdu(struct usbip_device *ud)
 {
 	int ret;
 	struct usbip_header pdu;
@@ -393,6 +510,9 @@ static void stub_rx_pdu(struct usbip_device *ud)
 
 	memset(&pdu, 0, sizeof(pdu));
 	ret = usbip_recv(ud->tcp_socket, &pdu, sizeof(pdu));
+	if(ret == 0) {
+		return -1;
+	}
 	usbip_header_correct_endian(&pdu, 0);
 
 	switch (pdu.base.command) {
@@ -408,6 +528,7 @@ static void stub_rx_pdu(struct usbip_device *ud)
 		dev_err(dev, "unknown pdu\n");
 		break;
 	}
+	return 0;
 }
 
 int stub_rx_loop(void *data)
@@ -415,7 +536,8 @@ int stub_rx_loop(void *data)
 	struct usbip_device *ud = data;
 
 	while (!kthread_should_stop())
-		stub_rx_pdu(ud);
+		if(stub_rx_pdu(ud) == -1)
+			break;
 
 	return 0;
 }
@@ -655,6 +777,11 @@ static int vep_queue(struct usb_ep *_ep, struct usb_request *_req,
 	req = usb_request_to_vrequest(_req);
 	vudc = ep_to_vudc(ep);
 
+	_req->actual = 0;
+
+	debug_print("[vudc] actual length: %d length: %d\n", _req->actual, _req->length);
+	print_hex_dump(KERN_DEBUG, "vep_queue", DUMP_PREFIX_OFFSET, 16, 4, _req->buf, _req->length, false);
+
 	/* TODO */
 	spin_lock_irqsave(&vudc->lock, flags);
 
@@ -752,7 +879,8 @@ static int vgadget_pullup(struct usb_gadget *_gadget, int value)
 	debug_print("[vudc] *** vgadget_pullup ***\n");
 
 	if (value && vudc->driver) {
-		vudc->gadget.speed = vudc->driver->max_speed;
+		//vudc->gadget.speed = vudc->driver->max_speed;
+		vudc->gadget.speed = USB_SPEED_HIGH;
 
 		if(vudc->gadget.speed == USB_SPEED_SUPER)
 			vudc->ep[0].ep.maxpacket = 9;
@@ -846,7 +974,7 @@ static int vudc_probe(struct platform_device *pdev)
 
 	vudc->gadget.name = gadget_name;
 	vudc->gadget.ops = &vgadget_ops;
-	vudc->gadget.max_speed = USB_SPEED_SUPER;
+	vudc->gadget.max_speed = USB_SPEED_HIGH;
 	vudc->gadget.dev.parent = &pdev->dev;
 
 	retval = init_vudc_hw(vudc);
