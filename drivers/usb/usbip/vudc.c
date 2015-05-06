@@ -231,110 +231,15 @@ static DEVICE_ATTR_RO(descriptor);
 
 /* ************************************************************************************************************ */
 
-static void usbip_dump_usb_ctrlrequest2(struct usb_ctrlrequest *cmd)
+/*
+static int get_pipe(struct vudc *sdev, int epnum, int dir)
 {
-	if (!cmd) {
-		pr_debug("       : null pointer\n");
-		return;
-	}
-
-	pr_debug("       ");
-	pr_debug("bRequestType(%02X) bRequest(%02X) wValue(%04X) wIndex(%04X) wLength(%04X) ",
-		 cmd->bRequestType, cmd->bRequest,
-		 cmd->wValue, cmd->wIndex, cmd->wLength);
-	pr_debug("\n       ");
-
-	if ((cmd->bRequestType & USB_TYPE_MASK) == USB_TYPE_STANDARD) {
-		pr_debug("STANDARD ");
-		switch (cmd->bRequest) {
-		case USB_REQ_GET_STATUS:
-			pr_debug("GET_STATUS\n");
-			break;
-		case USB_REQ_CLEAR_FEATURE:
-			pr_debug("CLEAR_FEAT\n");
-			break;
-		case USB_REQ_SET_FEATURE:
-			pr_debug("SET_FEAT\n");
-			break;
-		case USB_REQ_SET_ADDRESS:
-			pr_debug("SET_ADDRRS\n");
-			break;
-		case USB_REQ_GET_DESCRIPTOR:
-			pr_debug("GET_DESCRI\n");
-			break;
-		case USB_REQ_SET_DESCRIPTOR:
-			pr_debug("SET_DESCRI\n");
-			break;
-		case USB_REQ_GET_CONFIGURATION:
-			pr_debug("GET_CONFIG\n");
-			break;
-		case USB_REQ_SET_CONFIGURATION:
-			pr_debug("SET_CONFIG\n");
-			break;
-		case USB_REQ_GET_INTERFACE:
-			pr_debug("GET_INTERF\n");
-			break;
-		case USB_REQ_SET_INTERFACE:
-			pr_debug("SET_INTERF\n");
-			break;
-		case USB_REQ_SYNCH_FRAME:
-			pr_debug("SYNC_FRAME\n");
-			break;
-		default:
-			pr_debug("REQ(%02X)\n", cmd->bRequest);
-			break;
-		}
-		//usbip_dump_request_type(cmd->bRequestType);
-	} else if ((cmd->bRequestType & USB_TYPE_MASK) == USB_TYPE_CLASS) {
-		pr_debug("CLASS\n");
-	} else if ((cmd->bRequestType & USB_TYPE_MASK) == USB_TYPE_VENDOR) {
-		pr_debug("VENDOR\n");
-	} else if ((cmd->bRequestType & USB_TYPE_MASK) == USB_TYPE_RESERVED) {
-		pr_debug("RESERVED\n");
-	}
-}
-
-void usbip_dump_urb2(struct urb *urb)
-{
-
-	if (!urb) {
-		pr_debug("urb: null pointer!!\n");
-		return;
-	}
-
-	printk(KERN_ERR "   urb                   :%p\n", urb);
-	printk(KERN_ERR "   dev                   :%p\n", urb->dev);
-
-	printk(KERN_ERR "   pipe                  :%08x ", urb->pipe);
-
-/* 	usbip_dump_pipe(urb->pipe);
- */
-
-	printk(KERN_ERR "   status                :%d\n", urb->status);
-	printk(KERN_ERR "   transfer_flags        :%08X\n", urb->transfer_flags);
-	printk(KERN_ERR "   transfer_buffer       :%p\n", urb->transfer_buffer);
-	printk(KERN_ERR "   transfer_buffer_length:%d\n",
-						urb->transfer_buffer_length);
-	printk(KERN_ERR "   actual_length         :%d\n", urb->actual_length);
-	printk(KERN_ERR "   setup_packet          :%p\n", urb->setup_packet);
-
-	//if (urb->setup_packet && usb_pipetype(urb->pipe) == PIPE_CONTROL)
-		usbip_dump_usb_ctrlrequest2(
-			(struct usb_ctrlrequest *)urb->setup_packet);
-
-
-	printk(KERN_ERR "   start_frame           :%d\n", urb->start_frame);
-	printk(KERN_ERR "   number_of_packets     :%d\n", urb->number_of_packets);
-	printk(KERN_ERR "   interval              :%d\n", urb->interval);
-	printk(KERN_ERR "   error_count           :%d\n", urb->error_count);
-	printk(KERN_ERR "   context               :%p\n", urb->context);
-	printk(KERN_ERR "   complete              :%p\n", urb->complete);
-}
+	return (epnum & 0x7f);
+}*/
 
 static void make_transfer(struct urb *urb, struct vep *ep)
 {
 	struct vrequest *req;
-	int to_host;
 	void *ubuf, *rbuf;
 
 top:
@@ -349,11 +254,7 @@ top:
 		ubuf = urb->transfer_buffer + urb->actual_length;
 		rbuf = req->req.buf + req->req.actual;
 
-		to_host = usb_pipein(urb->pipe);
-		//TODO WARNING DANGEROUS!!!
-		to_host = 1;
-
-		if(to_host)
+		if(urb->pipe == USBIP_DIR_IN)
 			memcpy(ubuf, rbuf, len);
 		else
 			memcpy(rbuf, ubuf, len);
@@ -361,7 +262,6 @@ top:
 		req->req.actual += len;
 		urb->actual_length += len;
 		req->req.status = 0;
-		//list_del_init(&ep->queue);
 		list_del_init(&req->queue);
 		usb_gadget_giveback_request(&ep->ep, &req->req);
 		printk(KERN_ERR "ostatnie make transfer\n");
@@ -412,7 +312,6 @@ static void send_respond(struct urb *urb, struct vudc *sdev)
 
 		iovnum = 0;
 
-		/* 1. setup usbip_header */
 		setup_ret_submit_pdu(&pdu_header, urb);
 		usbip_dbg_stub_tx("setup txdata seqnum: %d urb: %p\n",
 				  pdu_header.base.seqnum, urb);
@@ -423,15 +322,10 @@ static void send_respond(struct urb *urb, struct vudc *sdev)
 		iovnum++;
 		txsize += sizeof(pdu_header);
 
-		/* 2. setup transfer buffer */
-		//if (usb_pipein(urb->pipe) &&
-		 //   usb_pipetype(urb->pipe) != PIPE_ISOCHRONOUS &&
-		  //  urb->actual_length > 0) {
-			iov[iovnum].iov_base = urb->transfer_buffer;
-			iov[iovnum].iov_len  = urb->actual_length;
-			iovnum++;
-			txsize += urb->actual_length;
-		//}
+		iov[iovnum].iov_base = urb->transfer_buffer;
+		iov[iovnum].iov_len  = urb->actual_length;
+		iovnum++;
+		txsize += urb->actual_length;
 
 		kernel_sendmsg(sdev->udev.tcp_socket, &msg,
 						iov,  iovnum, txsize);
@@ -445,9 +339,8 @@ static void stub_recv_cmd_submit(struct vudc *sdev,
 {
 	int ret;
 	struct vrequest *priv;
-	//struct usbip_device *ud = &sdev->udev;
 	size_t size;
-	//int pipe = get_pipe(sdev, pdu->base.ep, pdu->base.direction);
+	int pipe = pdu->base.ep;
 
 	priv = kzalloc(sizeof(struct vrequest), GFP_KERNEL);
 
@@ -455,8 +348,7 @@ static void stub_recv_cmd_submit(struct vudc *sdev,
 	priv->sdev = sdev;
 	printk(KERN_ERR "Ustawiam %p priv->seqnum na %d", priv, pdu->base.seqnum);
 	printk(KERN_ERR "Otrzymuje: %p priv->seqnum na %lu", priv, priv->seqnum);
-	//todo moze sie przyda
-	//list_add_tail(&priv->list, &sdev->priv_init);
+	printk(KERN_ERR "Pipe: = %d", pipe);
 
 	ret = 0;
 	priv->urb = usb_alloc_urb(0, GFP_KERNEL);
@@ -469,6 +361,7 @@ static void stub_recv_cmd_submit(struct vudc *sdev,
 	if (size > 0) {
 		printk(KERN_ERR "Potrzebna alokacja bufora\n");
 		priv->urb->transfer_buffer = kzalloc(size, GFP_KERNEL);
+		//TODO
 		//ret = usbip_recv(ud->tcp_socket, priv->urb->transfer_buffer, size);
 	}
 
@@ -476,29 +369,30 @@ static void stub_recv_cmd_submit(struct vudc *sdev,
 					  GFP_KERNEL);
 
 	priv->urb->context                = (void *) priv;
-	//priv->urb->dev                    = udev;
-	priv->urb->pipe                   = 0;
-	//priv->urb->complete               = stub_complete;
+	priv->urb->pipe                   = pdu->base.direction;
 
 	usbip_pack_pdu(pdu, priv->urb, USBIP_CMD_SUBMIT, 0);
 	 
 	usbip_dump_header(pdu);
-	usbip_dump_urb2(priv->urb);
-	//ret = usb_submit_urb(priv->urb, GFP_KERNEL);
-	
+	//usbip_dump_urb2(priv->urb);
+	usbip_dump_urb(priv->urb);
 
 	printk(KERN_ERR "Przed setup\n");
-	sdev->driver->setup(&sdev->gadget, (struct usb_ctrlrequest *)priv->urb->setup_packet);
+	if(pipe == 0)
+		sdev->driver->setup(&sdev->gadget, (struct usb_ctrlrequest *)priv->urb->setup_packet);
+
 
 	printk(KERN_ERR "Przed make transfer\n");
-	make_transfer(priv->urb, &sdev->ep[0]);
+	make_transfer(priv->urb, &sdev->ep[pipe]);
+
+
+
 	printk(KERN_ERR "Przed respond\n");
 	send_respond(priv->urb, sdev);
 
 	usbip_dbg_stub_rx("Leave\n");
 }
 
-/* recv a pdu */
 static int stub_rx_pdu(struct usbip_device *ud)
 {
 	int ret;
@@ -551,84 +445,6 @@ int stub_rx_loop(void *data)
 
 /* ************************************************************************************************************ */
 
-int thread_rx(void *data)
-{
-	int ret;
-  	struct socket *sock;
-	struct usbip_header pdu;
-
-	debug_print("[vudc] *** thread_rx ***\n");
-
-	//Simple recv
- 	sock = (struct socket *) data;
-
-	ret = usbip_recv(sock, &pdu, sizeof(pdu));
-	if(ret != sizeof(pdu)) {
-		debug_print("[vudc] error while reciving pdu\n");
-	}
-
-	usbip_header_correct_endian(&pdu, 0);
-
-	usbip_dump_header(&pdu);
-
-	kernel_sock_shutdown(sock, SHUT_RDWR);
-	sockfd_put(sock);
-
-	debug_print("[vudc] ### thread_rx ###\n");
-	return 0;
-}
-
-/* 	int result;
- * 	struct msghdr msg;
- * 	struct kvec iov;
- * 	int total;
- * 	char buf[10];
- * 	char response[10];
- * 	int size;
- * 	char *bp;
- * 	int osize;
- * 	struct socket *sock;
- * 	struct msghdr msg2;
- * 	struct kvec iov2;
- */
-/* 	total = 0;
- * 	size = 10;
- * 	bp = buf;
- * 	osize = size;
- * 
- * 	sock->sk->sk_allocation = GFP_NOIO;
- * 	iov.iov_base    = buf;
- * 	iov.iov_len     = size;
- * 	msg.msg_name    = NULL;
- * 	msg.msg_namelen = 0;
- * 	msg.msg_control = NULL;
- * 	msg.msg_controllen = 0;
- * 	msg.msg_flags      = MSG_NOSIGNAL;
- * 
- * 	memset(&msg2, 0, sizeof(struct msghdr));
- * 	response[0] = 'O';
- * 	response[1] = 'k';
- * 	response[2] = '\0';
- * 
- * 	iov2.iov_base = response;
- * 	iov2.iov_len = 3;
- * 
- * 	result = 1;
- * 	while(result != 0)
- * 	{
- * 		debug_print("[vudc] Start listening \n");
- * 		result = kernel_recvmsg(sock, &msg, &iov, 1, size, MSG_WAITALL);
- * 		if (result <= 0) {
- * 			debug_print("[vudc] Error during recv\n");
- * 		}
- * 
- * 		buf[9] = '\0';
- * 		debug_print("[vudc] Message received: %s\n", buf);
- * 
- * 
- * 		kernel_sendmsg(sock, &msg2, &iov2, 1, 3);
- * 	}
- */
 int thread_tx(void *data)
 {
 	debug_print("[vudc] *** thread_tx ***\n");
@@ -667,10 +483,7 @@ static ssize_t store_sockfd(struct device *dev, struct device_attribute *attr,
 	/*  Now create threads to take care of transmition */
 
 	vudc->udev.tcp_rx = kthread_run(&stub_rx_loop, &vudc->udev, "vudc_rx");
-	//vudc->vudc_rx = kthread_run(&thread_rx, socket, "vudc_rx");
 	
-	//vudc->vudc_tx = kthread_run(&thread_tx, socket, "vudc_tx");
-
 	debug_print("[vudc] ### example_out ###\n");
 
 	return count;
