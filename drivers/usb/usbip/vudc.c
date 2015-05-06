@@ -146,10 +146,11 @@ static ssize_t example_in_show(struct device *dev, struct device_attribute *attr
 static DEVICE_ATTR_RO(example_in);
 
 static ssize_t fetch_descriptor(struct usb_ctrlrequest* req, struct vudc* udc,
-				char *out, ssize_t maxsz)
+				char *out, ssize_t sz, ssize_t maxsz)
 {
 	struct vrequest *usb_req;
 	int ret;
+	int copysz;
 	struct vep *ep0 = usb_ep_to_vep(udc->gadget.ep0);
 
 	ret = udc->driver->setup(&(udc->gadget), req);
@@ -162,13 +163,14 @@ static ssize_t fetch_descriptor(struct usb_ctrlrequest* req, struct vudc* udc,
 	usb_req = list_entry(ep0->queue.prev, struct vrequest, queue);
 	list_del(&(usb_req->queue));
 
-	if (maxsz < usb_req->req.length) {
+	copysz = min(sz, (ssize_t) usb_req->req.length);
+	if (maxsz < copysz) {
 		ret = -1;
 		goto clean_req;
 	}
 
-	memcpy(out, usb_req->req.buf, usb_req->req.length);
-	ret = usb_req->req.length;
+	memcpy(out, usb_req->req.buf, copysz);
+	ret = copysz;
 
 clean_req:
 	usb_req->req.status = 0;
@@ -180,8 +182,7 @@ exit:
 
 /*
  * Fetches device and interface descriptors from the gadget driver.
- * Writes the device descriptor first, then interface descriptors in order as
- * in chapter 9.
+ * Writes the device descriptor first, then interface descriptors.
  */
 static ssize_t descriptor_show(struct device *dev,
 			       struct device_attribute *attr, char *out)
@@ -202,7 +203,7 @@ static ssize_t descriptor_show(struct device *dev,
 	req.wValue = cpu_to_le16(USB_DT_DEVICE << 8);
 	req.wIndex = cpu_to_le16(0);
 	req.wLength = cpu_to_le16(PAGE_SIZE - sz);
-	ret = fetch_descriptor(&req, udc, out + sz, PAGE_SIZE - sz);
+	ret = fetch_descriptor(&req, udc, out + sz, PAGE_SIZE - sz, PAGE_SIZE - sz);
 	if (ret < 0) {
 		debug_print("[vudc] Could not fetch device descriptor!\n");
 		return -1;
@@ -217,7 +218,8 @@ static ssize_t descriptor_show(struct device *dev,
 	req.wLength = cpu_to_le16(PAGE_SIZE - sz);
 	for (i = 0; i < dev_desc->bNumConfigurations ; i++) {
 		req.wIndex = cpu_to_le16(i);
-		ret = fetch_descriptor(&req, udc, out + sz, PAGE_SIZE - sz);
+		ret = fetch_descriptor(&req, udc, out + sz, PAGE_SIZE - sz,
+		                       sizeof(struct usb_config_descriptor));
 		if (ret < 0) {
 			debug_print("[vudc] Could not fetch interface descriptor!\n");
 			return -1;
