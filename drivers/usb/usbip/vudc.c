@@ -73,6 +73,7 @@ struct vep {
 	struct usb_ep ep;
 	/* Add here some fields if needed */
 
+	const struct usb_endpoint_descriptor *desc;
 	struct usb_gadget *gadget;
 	struct list_head queue; // Request queue
 };
@@ -233,11 +234,52 @@ static DEVICE_ATTR_RO(descriptor);
 
 /* ************************************************************************************************************ */
 
-/*
-static int get_pipe(struct vudc *sdev, int epnum, int dir)
+
+static int get_pipe(struct usb_device *udev, int epnum, int dir)
 {
-	return (epnum & 0x7f);
-}*/
+	struct usb_host_endpoint *ep;
+	struct usb_endpoint_descriptor *epd = NULL;
+
+	if (dir == USBIP_DIR_IN)
+		ep = udev->ep_in[epnum & 0x7f];
+	else
+		ep = udev->ep_out[epnum & 0x7f];
+	if (!ep) {
+		printk(KERN_ERR "Bardzo zle");
+		return -1;
+	}
+
+	epd = &ep->desc;
+	if (usb_endpoint_xfer_control(epd)) {
+		if (dir == USBIP_DIR_OUT)
+			return usb_sndctrlpipe(udev, epnum);
+		else
+			return usb_rcvctrlpipe(udev, epnum);
+	}
+
+	if (usb_endpoint_xfer_bulk(epd)) {
+		if (dir == USBIP_DIR_OUT)
+			return usb_sndbulkpipe(udev, epnum);
+		else
+			return usb_rcvbulkpipe(udev, epnum);
+	}
+
+	if (usb_endpoint_xfer_int(epd)) {
+		if (dir == USBIP_DIR_OUT)
+			return usb_sndintpipe(udev, epnum);
+		else
+			return usb_rcvintpipe(udev, epnum);
+	}
+
+	if (usb_endpoint_xfer_isoc(epd)) {
+		if (dir == USBIP_DIR_OUT)
+			return usb_sndisocpipe(udev, epnum);
+		else
+			return usb_rcvisocpipe(udev, epnum);
+	}
+
+	return 0;
+}
 
 static void make_transfer(struct urb *urb, struct vep *ep)
 {
@@ -336,21 +378,78 @@ static void send_respond(struct urb *urb, struct vudc *sdev)
 		kfree(iso_buffer);
 }
 
+/* some members of urb must be substituted before. */
+int usbip_recv_xbuff(struct usbip_device *ud, struct urb *urb)
+{
+	int ret;
+	int size;
+
+
+	printk(KERN_ERR "[xbuff] uno");
+	if (urb->pipe == USBIP_DIR_IN)
+		return 0;
+
+	size = urb->transfer_buffer_length;
+
+	printk(KERN_ERR "[xbuff] dos");
+	/* no need to recv xbuff */
+	if (!(size > 0))
+		return 0;
+
+	printk(KERN_ERR "Odbieram dodatkowy transfer_buffer - po stronie vudc");
+	ret = usbip_recv(ud->tcp_socket, urb->transfer_buffer, size);
+	if (ret != size) 
+			return -EPIPE;
+
+	return ret;
+}
+
+static struct vep *find_endpoint(struct vudc *vudc, u8 address)
+{
+	int i;
+
+	if ((address & ~USB_DIR_IN) == 0)
+	{
+		printk(KERN_ERR "[find_endpoint] Zwracam 0");
+		return &vudc->ep[0];
+	}
+
+	for (i = 1; i < VIRTUAL_ENDPOINTS; i++) {
+		struct vep *ep = &vudc->ep[i];
+
+		if (!ep->desc)
+			continue;
+		if (ep->desc->bEndpointAddress == address)
+		{
+			printk(KERN_ERR "[find_endpoint] Zwracam %d", i);
+			return ep;
+		}
+	}
+	return NULL;
+}
+
 static void stub_recv_cmd_submit(struct vudc *sdev,
 				 struct usbip_header *pdu)
 {
 	int ret;
 	struct vrequest *priv;
 	size_t size;
-	int pipe = pdu->base.ep;
+	struct usb_device udev;
+	struct vep *vep;
+	int pipe;
 
 	priv = kzalloc(sizeof(struct vrequest), GFP_KERNEL);
+	
+	udev.devnum = 0;
+
+	pipe = get_pipe(&udev, pdu->base.ep, pdu->base.direction);
+	vep = find_endpoint(sdev, pipe);
 
 	priv->seqnum = pdu->base.seqnum;
 	priv->sdev = sdev;
 	printk(KERN_ERR "Ustawiam %p priv->seqnum na %d", priv, pdu->base.seqnum);
 	printk(KERN_ERR "Otrzymuje: %p priv->seqnum na %lu", priv, priv->seqnum);
-	printk(KERN_ERR "Pipe: = %d", pipe);
+	printk(KERN_ERR "Pipe: = %x", pipe);
 
 	ret = 0;
 	priv->urb = usb_alloc_urb(0, GFP_KERNEL);
@@ -363,8 +462,6 @@ static void stub_recv_cmd_submit(struct vudc *sdev,
 	if (size > 0) {
 		printk(KERN_ERR "Potrzebna alokacja bufora\n");
 		priv->urb->transfer_buffer = kzalloc(size, GFP_KERNEL);
-		//TODO
-		//ret = usbip_recv(ud->tcp_socket, priv->urb->transfer_buffer, size);
 	}
 
 	priv->urb->setup_packet = kmemdup(&pdu->u.cmd_submit.setup, 8,
@@ -375,17 +472,18 @@ static void stub_recv_cmd_submit(struct vudc *sdev,
 
 	usbip_pack_pdu(pdu, priv->urb, USBIP_CMD_SUBMIT, 0);
 	 
+	usbip_recv_xbuff(&sdev->udev, priv->urb);
+
 	usbip_dump_header(pdu);
-	//usbip_dump_urb2(priv->urb);
 	usbip_dump_urb(priv->urb);
 
 	printk(KERN_ERR "Przed setup\n");
-	if(pipe == 0)
+	if(vep == &sdev->ep[0])
 		sdev->driver->setup(&sdev->gadget, (struct usb_ctrlrequest *)priv->urb->setup_packet);
 
 
 	printk(KERN_ERR "Przed make transfer\n");
-	make_transfer(priv->urb, &sdev->ep[pipe]);
+	make_transfer(priv->urb, vep);
 
 
 
@@ -421,7 +519,8 @@ static int stub_rx_pdu(struct usbip_device *ud)
 		break;
 
 	default:
-		dev_err(dev, "unknown pdu\n");
+		printk(KERN_ERR "UNKOWN PDU\n");
+		//dev_err(dev, "unknown pdu\n");
 		break;
 	}
 	return 0;
@@ -505,6 +604,7 @@ static int vep_enable(struct usb_ep *_ep,
 		return -EINVAL;
 	ep = usb_ep_to_vep(_ep);
 
+	ep->desc = desc;
 	/* TODO */
 
 	debug_print("[vudc] ### enable ###\n");
@@ -584,6 +684,7 @@ static int vep_queue(struct usb_ep *_ep, struct usb_request *_req,
 	unsigned long flags;
 
 	debug_print("[vudc] *** vep_queue ***\n");
+	debug_print("[vudc] Endpoint name: %s\n", _ep->name);
 
 	if (!_ep || !_req)
 		return -EINVAL;
