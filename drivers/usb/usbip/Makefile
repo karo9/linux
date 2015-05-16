@@ -9,9 +9,7 @@ vhci-hcd-y := vhci_sysfs.o vhci_tx.o vhci_rx.o vhci_hcd.o
 obj-$(CONFIG_USBIP_HOST) += usbip-host.o
 usbip-host-y := stub_dev.o stub_main.o stub_rx.o stub_tx.o
 
-#obj-m := vudc.o
+# FIXME: when cleaning up commits, replace with proper CONFIG option at the very start
 
-obj-m += vudc.o stub_rx.o
-#vudc := stub_rx.o
-
-#vudc := vudc.o usbip_common.o
+obj-m += usbip-vudc.o
+usbip-vudc-y := vudc.o
