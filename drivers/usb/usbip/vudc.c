@@ -218,9 +218,9 @@ static ssize_t descriptor_show(struct device *dev,
 	req.wIndex = cpu_to_le16(0);
 	req.wLength = cpu_to_le16(PAGE_SIZE - sz);
 	for (i = 0; i < dev_desc->bNumConfigurations ; i++) {
-		req.wIndex = cpu_to_le16(i);
-		ret = fetch_descriptor(&req, udc, out + sz, PAGE_SIZE - sz,
-		                       sizeof(struct usb_config_descriptor));
+		req.wValue = cpu_to_le16((USB_DT_CONFIG << 8) | i);
+		ret = fetch_descriptor(&req, udc, out + sz,
+		                       sizeof(struct usb_config_descriptor), PAGE_SIZE - sz);
 		if (ret < 0) {
 			debug_print("[vudc] Could not fetch interface descriptor!\n");
 			return -1;
