@@ -30,9 +30,13 @@
 #include <netdb.h>
 #include <unistd.h>
 
+#include <dirent.h>
+
 #include "usbip_common.h"
 #include "usbip_network.h"
 #include "usbip.h"
+
+#define GADGET_DIR "/sys/kernel/config/usb_gadget/"
 
 static const char usbip_list_usage_string[] =
 	"usbip list [-p|--parsable] <args>\n"
@@ -237,12 +241,79 @@ err_out:
 	return ret;
 }
 
+static int list_gadget_devices(bool parsable)
+{
+	FILE *fp;
+	DIR *dir, *dir2;
+	struct dirent *ent, *ent2;
+	char buf1[100], buf2[100], buf3[100];
+	char idProduct[20];
+	char idVendor[20];
+	int idVend;
+	char product_name[128];
+
+	strcpy(buf1, GADGET_DIR);
+	if((dir = opendir(buf1)) != NULL) 
+	{
+		while((ent = readdir(dir)) != NULL) 
+		{
+			if(ent->d_name[0] != '.')
+			{
+				strcpy(buf2, buf1);
+				strcat(buf2, ent->d_name);
+				strcat(buf2, "/");
+
+				if((dir2 = opendir(buf2)) != NULL) 
+				{
+					while((ent2 = readdir(dir2)) != NULL) 
+					if(ent2->d_name[0] != '.')
+					{
+						//printf("\'%s\'\n", ent2->d_name);
+						if(strcmp(ent2->d_name, "idProduct") == 0)
+						{
+							strcpy(buf3, buf2);
+							strcat(buf3, ent2->d_name);
+							fp = fopen(buf3, "r");
+							fread(idProduct, 100, 1, fp);
+							//printf("idProduct: %s", idProduct);
+							fclose(fp);
+						}
+						else if(strcmp(ent2->d_name, "idVendor") == 0)
+						{
+							strcpy(buf3, buf2);
+							strcat(buf3, ent2->d_name);
+							fp = fopen(buf3, "r");
+							fread(idVendor, 100, 1, fp);
+							sscanf(idVendor, "%x", &idVend);
+							idVendor[strlen(idVendor)-1] = '\0';
+							//printf("idVendor: %s \t %d \t %x\n", idVendor, idVend, idVend);
+							fclose(fp);
+						}
+					}
+				}
+				/* Get product name. */
+				usbip_names_get_product(product_name, sizeof(product_name),
+							strtol(idVendor, NULL, 16),
+							strtol(idProduct, NULL, 16));
+
+				print_device(ent->d_name, idVendor, idProduct, parsable);
+				print_product_name(product_name, parsable);
+				printf("\n");
+			}
+		}
+		closedir(dir);
+	} 
+
+	return 0;
+}
+
 int usbip_list(int argc, char *argv[])
 {
 	static const struct option opts[] = {
 		{ "parsable", no_argument,       NULL, 'p' },
 		{ "remote",   required_argument, NULL, 'r' },
 		{ "local",    no_argument,       NULL, 'l' },
+		{ "device",    no_argument,       NULL, 'd' },
 		{ NULL,       0,                 NULL,  0  }
 	};
 
@@ -254,7 +325,7 @@ int usbip_list(int argc, char *argv[])
 		err("failed to open %s", USBIDS_FILE);
 
 	for (;;) {
-		opt = getopt_long(argc, argv, "pr:l", opts, NULL);
+		opt = getopt_long(argc, argv, "pr:ld", opts, NULL);
 
 		if (opt == -1)
 			break;
@@ -268,6 +339,9 @@ int usbip_list(int argc, char *argv[])
 			goto out;
 		case 'l':
 			ret = list_devices(parsable);
+			goto out;
+		case 'd':
+			ret = list_gadget_devices(parsable);
 			goto out;
 		default:
 			goto err_out;
