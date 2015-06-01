@@ -76,6 +76,8 @@ struct vep {
 	const struct usb_endpoint_descriptor *desc;
 	struct usb_gadget *gadget;
 	struct list_head queue; // Request queue
+	unsigned halted:1;
+	unsigned wedged:1;
 };
 
 /* container for usb_request to store some request related data */
@@ -103,6 +105,7 @@ struct vudc {
 	spinlock_t lock; //Proctect data
 	struct vep ep[VIRTUAL_ENDPOINTS]; //VUDC enpoints
 	int address; //VUDC address
+	u16 devstatus;
 };
 
 /* suitable transator forom usb structures to our private one */
@@ -428,6 +431,154 @@ static struct vep *find_endpoint(struct vudc *vudc, u8 address)
 	return NULL;
 }
 
+#define Dev_Request	(USB_TYPE_STANDARD | USB_RECIP_DEVICE)
+#define Dev_InRequest	(Dev_Request | USB_DIR_IN)
+#define Intf_Request	(USB_TYPE_STANDARD | USB_RECIP_INTERFACE)
+#define Intf_InRequest	(Intf_Request | USB_DIR_IN)
+#define Ep_Request	(USB_TYPE_STANDARD | USB_RECIP_ENDPOINT)
+#define Ep_InRequest	(Ep_Request | USB_DIR_IN)
+
+/**
+ * handle_control_request() - handles all control transfers
+ * @dum: pointer to dummy (the_controller)
+ * @urb: the urb request to handle
+ * @setup: pointer to the setup data for a USB device control
+ *	 request
+ * @status: pointer to request handling status
+ *
+ * Return 0 - if the request was handled
+ *	  1 - if the request wasn't handles
+ *	  error code on error
+ *
+ * Adapted from drivers/usb/gadget/udc/dummy_hcd.c
+ */
+static int handle_control_request(struct vudc *sdev, struct urb *urb,
+				  struct usb_ctrlrequest *setup,
+				  int *status)
+{
+	struct vep		*ep2;
+	int			ret_val = 1;
+	unsigned	w_index;
+	unsigned	w_value;
+
+	w_index = le16_to_cpu(setup->wIndex);
+	w_value = le16_to_cpu(setup->wValue);
+	switch (setup->bRequest) {
+	case USB_REQ_SET_ADDRESS:
+		sdev->address = w_value;
+		break;
+	case USB_REQ_SET_FEATURE:
+		if (setup->bRequestType == Dev_Request) {
+			ret_val = 0;
+			switch (w_value) {
+			case USB_DEVICE_REMOTE_WAKEUP:
+				break;
+			case USB_DEVICE_B_HNP_ENABLE:
+				vudc->gadget.b_hnp_enable = 1;
+				break;
+			case USB_DEVICE_A_HNP_SUPPORT:
+				vudc->gadget.a_hnp_support = 1;
+				break;
+			case USB_DEVICE_A_ALT_HNP_SUPPORT:
+				vudc->gadget.a_alt_hnp_support = 1;
+				break;
+			//TODO - usb 3.0 support
+			case USB_DEVICE_U1_ENABLE:
+			case USB_DEVICE_U2_ENABLE:
+			case USB_DEVICE_LTM_ENABLE:
+				ret_val = -EOPNOTSUPP;
+				break;
+			default:
+				ret_val = -EOPNOTSUPP;
+			}
+			if (ret_val == 0) {
+				sdev->devstatus |= (1 << w_value);
+				*status = 0;
+			}
+		} else if (setup->bRequestType == Ep_Request) {
+			/* endpoint halt */
+			ep2 = find_endpoint(dum, w_index);
+			if (!ep2 || ep2->ep.name == ep0name) {
+				ret_val = -EOPNOTSUPP;
+				break;
+			}
+			ep2->halted = 1;
+			ret_val = 0;
+			*status = 0;
+		}
+		break;
+	case USB_REQ_CLEAR_FEATURE:
+		if (setup->bRequestType == Dev_Request) {
+			ret_val = 0;
+			switch (w_value) {
+			case USB_DEVICE_REMOTE_WAKEUP:
+				w_value = USB_DEVICE_REMOTE_WAKEUP;
+				break;
+
+			case USB_DEVICE_U1_ENABLE:
+			case USB_DEVICE_U2_ENABLE:
+			case USB_DEVICE_LTM_ENABLE:
+				ret_val = -EOPNOTSUPP;
+				break;
+			default:
+				ret_val = -EOPNOTSUPP;
+				break;
+			}
+			if (ret_val == 0) {
+				dum->devstatus &= ~(1 << w_value);
+				*status = 0;
+			}
+		} else if (setup->bRequestType == Ep_Request) {
+			/* endpoint halt */
+			ep2 = find_endpoint(dum, w_index);
+			if (!ep2) {
+				ret_val = -EOPNOTSUPP;
+				break;
+			}
+			if (!ep2->wedged)
+				ep2->halted = 0;
+			ret_val = 0;
+			*status = 0;
+		}
+		break;
+	case USB_REQ_GET_STATUS:
+		if (setup->bRequestType == Dev_InRequest
+				|| setup->bRequestType == Intf_InRequest
+				|| setup->bRequestType == Ep_InRequest) {
+			char *buf;
+			/*
+			 * device: remote wakeup, selfpowered
+			 * interface: nothing
+			 * endpoint: halt
+			 */
+			buf = (char *)urb->transfer_buffer;
+			if (urb->transfer_buffer_length > 0) {
+				if (setup->bRequestType == Ep_InRequest) {
+					ep2 = find_endpoint(dum, w_index);
+					if (!ep2) {
+						ret_val = -EOPNOTSUPP;
+						break;
+					}
+					buf[0] = ep2->halted;
+				} else if (setup->bRequestType ==
+					   Dev_InRequest) {
+					buf[0] = (u8)dum->devstatus;
+				} else
+					buf[0] = 0;
+			}
+			if (urb->transfer_buffer_length > 1)
+				buf[1] = 0;
+			urb->actual_length = min_t(u32, 2,
+				urb->transfer_buffer_length);
+			ret_val = 0;
+			*status = 0;
+		}
+		break;
+	}
+	return ret_val;
+}
+
+
 static void stub_recv_cmd_submit(struct vudc *sdev,
 				 struct usbip_header *pdu)
 {
@@ -436,7 +587,9 @@ static void stub_recv_cmd_submit(struct vudc *sdev,
 	size_t size;
 	struct usb_device udev;
 	struct vep *vep;
+	struct urb *urb;
 	int pipe;
+	int setup_handled = 1;
 
 	priv = kzalloc(sizeof(struct vrequest), GFP_KERNEL);
 	
@@ -452,8 +605,8 @@ static void stub_recv_cmd_submit(struct vudc *sdev,
 	printk(KERN_ERR "Pipe: = %x", pipe);
 
 	ret = 0;
-	priv->urb = usb_alloc_urb(0, GFP_KERNEL);
-
+	urb = usb_alloc_urb(0, GFP_KERNEL);
+	priv->urb = urb;
 	if (!priv->urb) {
 		return;
 	}
@@ -461,32 +614,42 @@ static void stub_recv_cmd_submit(struct vudc *sdev,
 	size = pdu->u.cmd_submit.transfer_buffer_length;
 	if (size > 0) {
 		printk(KERN_ERR "Potrzebna alokacja bufora\n");
-		priv->urb->transfer_buffer = kzalloc(size, GFP_KERNEL);
+		urb->transfer_buffer = kzalloc(size, GFP_KERNEL);
 	}
 
-	priv->urb->setup_packet = kmemdup(&pdu->u.cmd_submit.setup, 8,
+	urb->setup_packet = kmemdup(&pdu->u.cmd_submit.setup, 8,
 					  GFP_KERNEL);
 
-	priv->urb->context                = (void *) priv;
-	priv->urb->pipe                   = pdu->base.direction;
+	urb->context                = (void *) priv;
+	urb->pipe                   = pdu->base.direction;
 
-	usbip_pack_pdu(pdu, priv->urb, USBIP_CMD_SUBMIT, 0);
+	usbip_pack_pdu(pdu, urb, USBIP_CMD_SUBMIT, 0);
 	 
-	usbip_recv_xbuff(&sdev->udev, priv->urb);
+	usbip_recv_xbuff(&sdev->udev, urb);
 
 	usbip_dump_header(pdu);
-	usbip_dump_urb(priv->urb);
+	usbip_dump_urb(urb);
 
 	printk(KERN_ERR "Przed setup\n");
-	if(vep == &sdev->ep[0])
-		sdev->driver->setup(&sdev->gadget, (struct usb_ctrlrequest *)priv->urb->setup_packet);
+	if(vep == &sdev->ep[0]) {
+		setup_handled = handle_control_request(sdev, urb,
+		                urb->setup_packet, &ret);
+		if (setup_handled > 0)
+			ret = sdev->driver->setup(&sdev->gadget,
+			                    (struct usb_ctrlrequest *) urb->setup_packet);
+	}
+	if (ret >= 0) {}
+	else {
+		urb->status = -EPIPE;
+		urb->actual_length = 0;
+		goto return_urb;
+	}
 
 
 	printk(KERN_ERR "Przed make transfer\n");
 	make_transfer(priv->urb, vep);
 
-
-
+return_urb:
 	printk(KERN_ERR "Przed respond\n");
 	send_respond(priv->urb, sdev);
 
