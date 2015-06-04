@@ -440,7 +440,7 @@ static struct vep *find_endpoint(struct vudc *vudc, u8 address)
 
 /**
  * handle_control_request() - handles all control transfers
- * @dum: pointer to dummy (the_controller)
+ * @sdev: pointer to vudc
  * @urb: the urb request to handle
  * @setup: pointer to the setup data for a USB device control
  *	 request
@@ -474,13 +474,13 @@ static int handle_control_request(struct vudc *sdev, struct urb *urb,
 			case USB_DEVICE_REMOTE_WAKEUP:
 				break;
 			case USB_DEVICE_B_HNP_ENABLE:
-				vudc->gadget.b_hnp_enable = 1;
+				sdev->gadget.b_hnp_enable = 1;
 				break;
 			case USB_DEVICE_A_HNP_SUPPORT:
-				vudc->gadget.a_hnp_support = 1;
+				sdev->gadget.a_hnp_support = 1;
 				break;
 			case USB_DEVICE_A_ALT_HNP_SUPPORT:
-				vudc->gadget.a_alt_hnp_support = 1;
+				sdev->gadget.a_alt_hnp_support = 1;
 				break;
 			//TODO - usb 3.0 support
 			case USB_DEVICE_U1_ENABLE:
@@ -497,7 +497,7 @@ static int handle_control_request(struct vudc *sdev, struct urb *urb,
 			}
 		} else if (setup->bRequestType == Ep_Request) {
 			/* endpoint halt */
-			ep2 = find_endpoint(dum, w_index);
+			ep2 = find_endpoint(sdev, w_index);
 			if (!ep2 || ep2->ep.name == ep0name) {
 				ret_val = -EOPNOTSUPP;
 				break;
@@ -525,12 +525,12 @@ static int handle_control_request(struct vudc *sdev, struct urb *urb,
 				break;
 			}
 			if (ret_val == 0) {
-				dum->devstatus &= ~(1 << w_value);
+				sdev->devstatus &= ~(1 << w_value);
 				*status = 0;
 			}
 		} else if (setup->bRequestType == Ep_Request) {
 			/* endpoint halt */
-			ep2 = find_endpoint(dum, w_index);
+			ep2 = find_endpoint(sdev, w_index);
 			if (!ep2) {
 				ret_val = -EOPNOTSUPP;
 				break;
@@ -554,7 +554,7 @@ static int handle_control_request(struct vudc *sdev, struct urb *urb,
 			buf = (char *)urb->transfer_buffer;
 			if (urb->transfer_buffer_length > 0) {
 				if (setup->bRequestType == Ep_InRequest) {
-					ep2 = find_endpoint(dum, w_index);
+					ep2 = find_endpoint(sdev, w_index);
 					if (!ep2) {
 						ret_val = -EOPNOTSUPP;
 						break;
@@ -562,7 +562,7 @@ static int handle_control_request(struct vudc *sdev, struct urb *urb,
 					buf[0] = ep2->halted;
 				} else if (setup->bRequestType ==
 					   Dev_InRequest) {
-					buf[0] = (u8)dum->devstatus;
+					buf[0] = (u8)sdev->devstatus;
 				} else
 					buf[0] = 0;
 			}
@@ -661,7 +661,6 @@ static int stub_rx_pdu(struct usbip_device *ud)
 	int ret;
 	struct usbip_header pdu;
 	struct vudc *sdev = container_of(ud, struct vudc, udev);
-	struct device *dev = &sdev->dev->dev;
 
 	usbip_dbg_stub_rx("Enter\n");
 
