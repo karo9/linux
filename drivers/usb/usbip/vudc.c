@@ -237,84 +237,110 @@ static DEVICE_ATTR_RO(descriptor);
 
 /* ************************************************************************************************************ */
 
-
-static int get_pipe(struct usb_device *udev, int epnum, int dir)
+/* Adapted from dummy_hcd.c ; caller must hold lock */
+static void transfer(struct vudc* sdev,
+		struct urb *urb, struct vep *ep)
 {
-	struct usb_host_endpoint *ep;
-	struct usb_endpoint_descriptor *epd = NULL;
-
-	if (dir == USBIP_DIR_IN)
-		ep = udev->ep_in[epnum & 0x7f];
-	else
-		ep = udev->ep_out[epnum & 0x7f];
-	if (!ep) {
-		printk(KERN_ERR "Bardzo zle");
-		return -1;
-	}
-
-	epd = &ep->desc;
-	if (usb_endpoint_xfer_control(epd)) {
-		if (dir == USBIP_DIR_OUT)
-			return usb_sndctrlpipe(udev, epnum);
-		else
-			return usb_rcvctrlpipe(udev, epnum);
-	}
-
-	if (usb_endpoint_xfer_bulk(epd)) {
-		if (dir == USBIP_DIR_OUT)
-			return usb_sndbulkpipe(udev, epnum);
-		else
-			return usb_rcvbulkpipe(udev, epnum);
-	}
-
-	if (usb_endpoint_xfer_int(epd)) {
-		if (dir == USBIP_DIR_OUT)
-			return usb_sndintpipe(udev, epnum);
-		else
-			return usb_rcvintpipe(udev, epnum);
-	}
-
-	if (usb_endpoint_xfer_isoc(epd)) {
-		if (dir == USBIP_DIR_OUT)
-			return usb_sndisocpipe(udev, epnum);
-		else
-			return usb_rcvisocpipe(udev, epnum);
-	}
-
-	return 0;
-}
-
-static void make_transfer(struct urb *urb, struct vep *ep)
-{
-	struct vrequest *req;
-	void *ubuf, *rbuf;
+	struct vrequest	*req;
 
 top:
+	/* if there's no request queued, the device is NAKing; return */
 	list_for_each_entry(req, &ep->queue, queue) {
-		unsigned host_len, dev_len, len;
+		unsigned	host_len, dev_len, len;
+		int		is_short, to_host;
+		int		rescan = 0;
 
+		/* 1..N packets of ep->ep.maxpacket each ... the last one
+		 * may be short (including zero length).
+		 *
+		 * writer can send a zlp explicitly (length 0) or implicitly
+		 * (length mod maxpacket zero, and 'zero' flag); they always
+		 * terminate reads.
+		 */
 		host_len = urb->transfer_buffer_length - urb->actual_length;
 		dev_len = req->req.length - req->req.actual;
 		len = min(host_len, dev_len);
-		printk(KERN_ERR "make transfer %u i %u\n", host_len, dev_len);
 
-		ubuf = urb->transfer_buffer + urb->actual_length;
-		rbuf = req->req.buf + req->req.actual;
+		/* FIXME update emulated data toggle too */
 
-		if(urb->pipe == USBIP_DIR_IN)
-			memcpy(ubuf, rbuf, len);
-		else
-			memcpy(rbuf, ubuf, len);
+		to_host = usb_pipein(urb->pipe);
+		if (unlikely(len == 0))
+			is_short = 1;
+		else {
+			/* use an extra pass for the final short packet */
+			if (len > ep->ep.maxpacket) {
+				rescan = 1;
+				len -= (len % ep->ep.maxpacket);
+			}
+			is_short = (len % ep->ep.maxpacket) != 0;
 
-		req->req.actual += len;
-		urb->actual_length += len;
-		req->req.status = 0;
-		list_del_init(&req->queue);
-		usb_gadget_giveback_request(&ep->ep, &req->req);
-		printk(KERN_ERR "ostatnie make transfer\n");
-		goto top;
+			if(urb->pipe == USBIP_DIR_IN)
+				memcpy(urb->transfer_buffer, req->req.buf, len);
+			else
+				memcpy(req->req.buf, urb->transfer_buffer, len);
+
+			urb->actual_length += len;
+			req->req.actual += len;
+		}
+
+		/* short packets terminate, maybe with overflow/underflow.
+		 * it's only really an error to write too much.
+		 *
+		 * partially filling a buffer optionally blocks queue advances
+		 * (so completion handlers can clean up the queue) but we don't
+		 * need to emulate such data-in-flight.
+		 */
+		if (is_short) {
+			if (host_len == dev_len) {
+				req->req.status = 0;
+				urb->status = 0;
+			} else if (to_host) {
+				req->req.status = 0;
+				if (dev_len > host_len)
+					urb->status = -EOVERFLOW;
+				else
+					urb->status = 0;
+			} else if (!to_host) {
+				urb->status = 0;
+				if (host_len > dev_len)
+					req->req.status = -EOVERFLOW;
+				else
+					req->req.status = 0;
+			}
+
+		/* many requests terminate without a short packet */
+		} else {
+			if (req->req.length == req->req.actual
+					&& !req->req.zero)
+				req->req.status = 0;
+			if (urb->transfer_buffer_length == urb->actual_length
+					&& !(urb->transfer_flags
+						& URB_ZERO_PACKET))
+				urb->status = 0;
+		}
+
+		/* device side completion --> continuable */
+		if (req->req.status != -EINPROGRESS) {
+
+            //printk(KERN_ERR "transfer - device side completion\n");
+            
+			list_del_init(&req->queue);
+			spin_unlock(&sdev->lock);
+			usb_gadget_giveback_request(&ep->ep, &req->req);
+			spin_lock(&sdev->lock);
+
+			/* requests might have been unlinked... */
+			rescan = 1;
+		}
+
+		/* host side completion --> terminate */
+		if (urb->status != -EINPROGRESS)
+			break;
+
+		/* rescan to continue with any other queued i/o */
+		if (rescan)
+			goto top;
 	}
-
 }
 
 static inline void setup_base_pdu(struct usbip_header_basic *base,
@@ -578,52 +604,81 @@ static int handle_control_request(struct vudc *sdev, struct urb *urb,
 	return ret_val;
 }
 
+static int alloc_urb_from_cmd(struct urb **urbp, struct usbip_header *pdu)
+{
+	struct urb* urb;
+	/* TODO - support isoc packets */
+	urb = usb_alloc_urb(0, GFP_KERNEL);
+	if (!urb)
+		goto err;
+	
+	usbip_pack_pdu(pdu, urb, USBIP_CMD_SUBMIT, 0);
+
+	if (urb->transfer_buffer_length > 0) {
+		urb->transfer_buffer = kzalloc(urb->transfer_buffer_length,
+			GFP_KERNEL);
+		if(!urb->transfer_buffer)
+			goto free_urb;
+	}
+
+	urb->setup_packet = kmemdup(&pdu->u.cmd_submit.setup, 8,
+	                    GFP_KERNEL);
+	if(!urb->setup_packet)
+		goto free_buffer;
+
+	/* FIXME - we only setup pipe enough for usbip functions
+	 * to behave nicely */
+	if (pdu->base.direction == USBIP_DIR_IN)
+		urb->pipe |= USB_DIR_IN;
+	else
+		urb->pipe &= (~USB_DIR_IN);
+
+	*urbp = urb;
+	return 0;
+
+free_buffer:
+	kfree(urb->transfer_buffer);
+free_urb:
+	usb_free_urb(urb);
+err:
+	return -ENOMEM;
+}
 
 static void stub_recv_cmd_submit(struct vudc *sdev,
 				 struct usbip_header *pdu)
 {
 	int ret;
 	struct vrequest *priv;
-	size_t size;
-	struct usb_device udev;
 	struct vep *vep;
 	struct urb *urb;
-	int pipe;
+	struct urb **urbp = &urb;
+	u8 address;
 	int setup_handled = 1;
+	unsigned long flags;
 
 	priv = kzalloc(sizeof(struct vrequest), GFP_KERNEL);
 	
-	udev.devnum = 0;
+	/* base.ep is pipeendpoint(pipe) */
+	address = pdu->base.ep;
+	if (pdu->base.direction == USBIP_DIR_IN)
+		address |= USB_DIR_IN;
 
-	pipe = get_pipe(&udev, pdu->base.ep, pdu->base.direction);
-	vep = find_endpoint(sdev, pipe);
+	vep = find_endpoint(sdev, address);
 
 	priv->seqnum = pdu->base.seqnum;
 	priv->sdev = sdev;
 	printk(KERN_ERR "Ustawiam %p priv->seqnum na %d", priv, pdu->base.seqnum);
 	printk(KERN_ERR "Otrzymuje: %p priv->seqnum na %lu", priv, priv->seqnum);
-	printk(KERN_ERR "Pipe: = %x", pipe);
 
-	ret = 0;
-	urb = usb_alloc_urb(0, GFP_KERNEL);
-	priv->urb = urb;
-	if (!priv->urb) {
+	ret = alloc_urb_from_cmd(urbp, pdu);
+	if (ret) {
+		/* TODO - handle -ENOMEM */
 		return;
 	}
 
-	size = pdu->u.cmd_submit.transfer_buffer_length;
-	if (size > 0) {
-		printk(KERN_ERR "Potrzebna alokacja bufora\n");
-		urb->transfer_buffer = kzalloc(size, GFP_KERNEL);
-	}
-
-	urb->setup_packet = kmemdup(&pdu->u.cmd_submit.setup, 8,
-					  GFP_KERNEL);
-
+	urb = *urbp;
+	priv->urb = urb;
 	urb->context                = (void *) priv;
-	urb->pipe                   = pdu->base.direction;
-
-	usbip_pack_pdu(pdu, urb, USBIP_CMD_SUBMIT, 0);
 	 
 	usbip_recv_xbuff(&sdev->udev, urb);
 
@@ -631,23 +686,31 @@ static void stub_recv_cmd_submit(struct vudc *sdev,
 	usbip_dump_urb(urb);
 
 	printk(KERN_ERR "Przed setup\n");
+
+	spin_lock_irqsave(&sdev->lock, flags);
 	if(vep == &sdev->ep[0]) {
+		/* TODO - flush any stale requests */
 		setup_handled = handle_control_request(sdev, urb,
-		                urb->setup_packet, &ret);
+		                (struct usb_ctrlrequest *) urb->setup_packet, &ret);
 		if (setup_handled > 0)
+			spin_unlock(&sdev->lock);
 			ret = sdev->driver->setup(&sdev->gadget,
 			                    (struct usb_ctrlrequest *) urb->setup_packet);
+			spin_lock(&sdev->lock);
 	}
-	if (ret >= 0) {}
+	if (ret >= 0) {
+		/* TODO - when different types are coded in, treat like bulk */
+	}
 	else {
 		urb->status = -EPIPE;
 		urb->actual_length = 0;
+		spin_unlock_irqrestore(&sdev->lock, flags);
 		goto return_urb;
 	}
 
-
 	printk(KERN_ERR "Przed make transfer\n");
-	make_transfer(priv->urb, vep);
+	transfer(sdev, priv->urb, vep);
+	spin_unlock_irqrestore(&sdev->lock, flags);
 
 return_urb:
 	printk(KERN_ERR "Przed respond\n");
