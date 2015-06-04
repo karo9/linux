@@ -362,6 +362,26 @@ static void setup_ret_submit_pdu(struct usbip_header *rpdu, struct urb *urb)
 }
 
 
+static void free_urb(struct urb *urb)
+{
+	if (!urb)
+		return;
+
+	if (urb->setup_packet) {
+		kfree(urb->setup_packet);
+		urb->setup_packet = NULL;
+	}
+
+	if (urb->transfer_buffer) {
+		kfree(urb->transfer_buffer);
+		urb->transfer_buffer = NULL;
+	}
+
+	usb_free_urb(urb);
+	return;
+}
+
+
 static void send_respond(struct urb *urb, struct vudc *sdev)
 {
 
@@ -405,6 +425,7 @@ static void send_respond(struct urb *urb, struct vudc *sdev)
 
 		kfree(iov);
 		kfree(iso_buffer);
+		free_urb(urb);
 }
 
 /* some members of urb must be substituted before. */
@@ -638,6 +659,7 @@ static int alloc_urb_from_cmd(struct urb **urbp, struct usbip_header *pdu)
 
 free_buffer:
 	kfree(urb->transfer_buffer);
+	urb->transfer_buffer = NULL;
 free_urb:
 	usb_free_urb(urb);
 err:
