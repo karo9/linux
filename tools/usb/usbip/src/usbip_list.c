@@ -251,6 +251,8 @@ static int list_gadget_devices(bool parsable)
 	char idVendor[20];
 	int idVend;
 	char product_name[128];
+	int ret;
+	ret = 0;
 
 	strcpy(buf1, GADGET_DIR);
 	if((dir = opendir(buf1)) != NULL) 
@@ -274,7 +276,7 @@ static int list_gadget_devices(bool parsable)
 							strcpy(buf3, buf2);
 							strcat(buf3, ent2->d_name);
 							fp = fopen(buf3, "r");
-							fread(idProduct, 100, 1, fp);
+							ret = fread(idProduct, 20, 1, fp);
 							//printf("idProduct: %s", idProduct);
 							fclose(fp);
 						}
@@ -283,7 +285,7 @@ static int list_gadget_devices(bool parsable)
 							strcpy(buf3, buf2);
 							strcat(buf3, ent2->d_name);
 							fp = fopen(buf3, "r");
-							fread(idVendor, 100, 1, fp);
+							ret = fread(idVendor, 20, 1, fp);
 							sscanf(idVendor, "%x", &idVend);
 							idVendor[strlen(idVendor)-1] = '\0';
 							//printf("idVendor: %s \t %d \t %x\n", idVendor, idVend, idVend);
@@ -303,6 +305,8 @@ static int list_gadget_devices(bool parsable)
 		}
 		closedir(dir);
 	} 
+	if (ret < 0)
+	 return -1;
 
 	return 0;
 }
