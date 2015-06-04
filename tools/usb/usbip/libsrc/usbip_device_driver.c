@@ -52,6 +52,8 @@ struct usbip_exported_device *usbip_exported_device_new(const char *path)
 	struct usbip_exported_device *edev_old;
 	size_t size;
 	int i;
+	int ret;
+	ret = 0;
 
 	edev = calloc(1, sizeof(struct usbip_exported_device));
 
@@ -75,7 +77,7 @@ struct usbip_exported_device *usbip_exported_device_new(const char *path)
 				if(strcmp(ent->d_name, "idProduct") == 0)
 				{
 					fp = fopen(buf1, "r");
-					fread(buf2, 100, 1, fp);
+					ret = fread(buf2, 100, 1, fp);
 					sscanf(buf2, "%x\n", &tmpNum);
 					edev->udev.idProduct = (uint16_t)tmpNum;
 					fclose(fp);
@@ -85,7 +87,7 @@ struct usbip_exported_device *usbip_exported_device_new(const char *path)
 				else if(strcmp(ent->d_name, "idVendor") == 0)
 				{
 					fp = fopen(buf1, "r");
-					fread(buf2, 100, 1, fp);
+					ret = fread(buf2, 100, 1, fp);
 					sscanf(buf2, "%x\n", &tmpNum);
 					edev->udev.idVendor = (uint16_t)tmpNum;
 					fclose(fp);
@@ -95,7 +97,7 @@ struct usbip_exported_device *usbip_exported_device_new(const char *path)
 				else if(strcmp(ent->d_name, "bcdDevice") == 0)
 				{
 					fp = fopen(buf1, "r");
-					fread(buf2, 100, 1, fp);
+					ret = fread(buf2, 100, 1, fp);
 					sscanf(buf2, "%x\n", &tmpNum);
 					edev->udev.bcdDevice = (uint16_t)tmpNum;
 					fclose(fp);
@@ -105,7 +107,7 @@ struct usbip_exported_device *usbip_exported_device_new(const char *path)
 				else if(strcmp(ent->d_name, "bDeviceClass") == 0)
 				{
 					fp = fopen(buf1, "r");
-					fread(buf2, 100, 1, fp);
+					ret = fread(buf2, 100, 1, fp);
 					sscanf(buf2, "%x\n", &tmpNum);
 					edev->udev.bDeviceClass = (uint16_t)tmpNum;
 					fclose(fp);
@@ -115,7 +117,7 @@ struct usbip_exported_device *usbip_exported_device_new(const char *path)
 				else if(strcmp(ent->d_name, "bDeviceProtocol") == 0)
 				{
 					fp = fopen(buf1, "r");
-					fread(buf2, 100, 1, fp);
+					ret = fread(buf2, 100, 1, fp);
 					sscanf(buf2, "%x\n", &tmpNum);
 					edev->udev.bDeviceProtocol = (uint16_t)tmpNum;
 					fclose(fp);
@@ -125,7 +127,7 @@ struct usbip_exported_device *usbip_exported_device_new(const char *path)
 				else if(strcmp(ent->d_name, "bDeviceSubClass") == 0)
 				{
 					fp = fopen(buf1, "r");
-					fread(buf2, 100, 1, fp);
+					ret = fread(buf2, 100, 1, fp);
 					sscanf(buf2, "%x\n", &tmpNum);
 					edev->udev.bDeviceSubClass = (uint16_t)tmpNum;
 					fclose(fp);
@@ -133,6 +135,8 @@ struct usbip_exported_device *usbip_exported_device_new(const char *path)
 					printf("bDeviceSubClass: %d\n", tmpNum);
 				}
 			}
+			if (ret < 0)
+				goto err;
 			strncpy(edev->udev.path, path, SYSFS_PATH_MAX);
 			// todo
 			strncpy(edev->udev.busid, "g1", SYSFS_BUS_ID_SIZE);
