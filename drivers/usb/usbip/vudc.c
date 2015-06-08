@@ -237,6 +237,24 @@ static DEVICE_ATTR_RO(descriptor);
 
 /* ************************************************************************************************************ */
 
+/*utilities ; alomst verbatim from dummy_hcd.c */
+
+/* called with spinlock held */
+static void nuke(struct vudc *sdev, struct vep *ep)
+{
+	while (!list_empty(&ep->queue)) {
+		struct vrequest	*req;
+
+		req = list_entry(ep->queue.next, struct vrequest, queue);
+		list_del_init(&req->queue);
+		req->req.status = -ESHUTDOWN;
+
+		spin_unlock(&sdev->lock);
+		usb_gadget_giveback_request(&ep->ep, &req->req);
+		spin_lock(&sdev->lock);
+	}
+}
+
 /* Adapted from dummy_hcd.c ; caller must hold lock */
 static void transfer(struct vudc* sdev,
 		struct urb *urb, struct vep *ep)
@@ -844,36 +862,78 @@ static int vep_enable(struct usb_ep *_ep,
 		const struct usb_endpoint_descriptor *desc)
 {
 	struct vep *ep;
+	struct vudc *sdev;
+	int retval;
 
 	debug_print("[vudc] *** enable ***\n");
 
-	if (!_ep || !desc)
-		return -EINVAL;
 	ep = usb_ep_to_vep(_ep);
+	if (!_ep || !desc || ep->desc || _ep->name == ep0name
+			|| desc->bDescriptorType != USB_DT_ENDPOINT)
+		return -EINVAL;
+	sdev = ep_to_vudc(ep);
+	if (!sdev->driver)
+		return -ESHUTDOWN;
+
+	/* TODO - check if in state allowing for enable */
+
+	retval = -EINVAL;
+	switch (usb_endpoint_type(desc)) {
+	case USB_ENDPOINT_XFER_BULK:
+		if (strstr(ep->ep.name, "-iso")
+				|| strstr(ep->ep.name, "-int"))
+			goto done;
+		break;
+	case USB_ENDPOINT_XFER_INT:
+		if (strstr(ep->ep.name, "-iso"))
+			goto done;
+		break;
+	case USB_ENDPOINT_XFER_ISOC:
+		if (strstr(ep->ep.name, "-bulk")
+				|| strstr(ep->ep.name, "-int"))
+			goto done;
+	default:
+		goto done;
+	}
+
+	switch (desc->bEndpointAddress & USB_DIR_IN) {
+	case USB_DIR_IN:
+		if (strstr(ep->ep.name, "out"))
+			goto done;
+	case 0:
+		if (strstr(ep->ep.name, "in"))
+			goto done;
+	default:
+		goto done;
+	}
 
 	ep->desc = desc;
-	/* TODO */
+	ep->halted = ep->wedged = 0;
+	retval = 0;
 
-	debug_print("[vudc] ### enable ###\n");
-
-	return 0;
-
+done:
+	return retval;
 }
 
 static int vep_disable(struct usb_ep *_ep)
 {
 	struct vep *ep;
+	struct vudc *sdev;
+	unsigned long flags;
 
 	debug_print("[vudc] *** disable ***\n");
 
-	if (!_ep)
-		return -EINVAL;
 	ep = usb_ep_to_vep(_ep);
+	if (!_ep || !ep->desc || _ep->name == ep0name)
+		return -EINVAL;
+	sdev = ep_to_vudc(ep);
 
-	/* TODO */
+	spin_lock_irqsave(&sdev->lock, flags);
+	ep->desc = NULL;
+	nuke(sdev, ep);
+	spin_unlock_irqrestore(&sdev->lock, flags);
 
 	debug_print("[vudc] ### disable ###\n");
-
 	return 0;
 }
 
