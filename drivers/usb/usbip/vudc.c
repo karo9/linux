@@ -20,6 +20,7 @@
 #include <linux/kthread.h>
 #include <linux/file.h>
 #include <linux/byteorder/generic.h>
+#include <linux/timer.h>
 
 #include "usbip_common.h"
 #include "stub.h"
@@ -83,13 +84,18 @@ struct vep {
 /* container for usb_request to store some request related data */
 struct vrequest {
 	struct usb_request req;
-	struct urb *urb;
 	/* Add here some fields if needed */
 
-	unsigned long seqnum;
 	struct vudc *sdev;
 
 	struct list_head queue; // Request queue
+};
+
+struct urbp {
+	struct urb *urb;
+	struct vep *ep;
+	struct list_head urb_q;
+	unsigned long seqnum;
 };
 
 struct vudc {
@@ -101,6 +107,14 @@ struct vudc {
 	struct usbip_device udev;
 	struct task_struct *vudc_rx;
 	struct task_struct *vudc_tx;
+	struct timer_list tr_timer;
+
+	struct list_head urb_q;
+
+	spinlock_t lock_tx;
+	struct list_head priv_tx;
+	struct list_head unlink_tx;
+	wait_queue_head_t tx_waitq;
 
 	spinlock_t lock; //Proctect data
 	struct vep ep[VIRTUAL_ENDPOINTS]; //VUDC enpoints
@@ -129,6 +143,84 @@ static inline struct vudc *usb_gadget_to_vudc(
 static inline struct vudc *ep_to_vudc(struct vep *ep)
 {
 	return container_of(ep->gadget, struct vudc, gadget);
+}
+
+static int alloc_urb_from_cmd(struct urb **urbp, struct usbip_header *pdu)
+{
+	struct urb* urb;
+	/* TODO - support isoc packets */
+	urb = usb_alloc_urb(0, GFP_KERNEL);
+	if (!urb)
+		goto err;
+
+	usbip_pack_pdu(pdu, urb, USBIP_CMD_SUBMIT, 0);
+
+	if (urb->transfer_buffer_length > 0) {
+		urb->transfer_buffer = kzalloc(urb->transfer_buffer_length,
+			GFP_KERNEL);
+		if(!urb->transfer_buffer)
+			goto free_urb;
+	}
+
+	urb->setup_packet = kmemdup(&pdu->u.cmd_submit.setup, 8,
+	                    GFP_KERNEL);
+	if(!urb->setup_packet)
+		goto free_buffer;
+
+	/* FIXME - we only setup pipe enough for usbip functions
+	 * to behave nicely */
+	if (pdu->base.direction == USBIP_DIR_IN)
+		urb->pipe |= USB_DIR_IN;
+	else
+		urb->pipe &= (~USB_DIR_IN);
+
+	*urbp = urb;
+	return 0;
+
+free_buffer:
+	kfree(urb->transfer_buffer);
+	urb->transfer_buffer = NULL;
+free_urb:
+	usb_free_urb(urb);
+err:
+	return -ENOMEM;
+}
+
+
+static void free_urb(struct urb *urb)
+{
+	if (!urb)
+		return;
+
+	if (urb->setup_packet) {
+		kfree(urb->setup_packet);
+		urb->setup_packet = NULL;
+	}
+
+	if (urb->transfer_buffer) {
+		kfree(urb->transfer_buffer);
+		urb->transfer_buffer = NULL;
+	}
+
+	usb_free_urb(urb);
+	return;
+}
+
+static struct urbp* alloc_urbp(void)
+{
+	struct urbp* urb_p = kmalloc(sizeof(struct urbp), GFP_KERNEL);
+	if (!urb_p)
+		return urb_p;
+
+	urb_p->urb = NULL;
+	urb_p->ep = NULL;
+	INIT_LIST_HEAD(&urb_p->urb_q);
+	return urb_p;
+}
+
+static void free_urbp(struct urbp* urb_p)
+{
+	kfree(urb_p);
 }
 
 /* sysfs files */
@@ -371,38 +463,18 @@ static inline void setup_base_pdu(struct usbip_header_basic *base,
 	base->direction = 0;
 }
 
-static void setup_ret_submit_pdu(struct usbip_header *rpdu, struct urb *urb)
+static void setup_ret_submit_pdu(struct usbip_header *rpdu, struct urbp *urb_p)
 {
-	struct vrequest *priv = (struct vrequest *) urb->context;
-
-	setup_base_pdu(&rpdu->base, USBIP_RET_SUBMIT, priv->seqnum);
-	usbip_pack_pdu(rpdu, urb, USBIP_RET_SUBMIT, 1);
+	setup_base_pdu(&rpdu->base, USBIP_RET_SUBMIT, urb_p->seqnum);
+	usbip_pack_pdu(rpdu, urb_p->urb, USBIP_RET_SUBMIT, 1);
 }
 
 
-static void free_urb(struct urb *urb)
+
+
+static void send_respond(struct urbp *urb_p, struct vudc *sdev)
 {
-	if (!urb)
-		return;
-
-	if (urb->setup_packet) {
-		kfree(urb->setup_packet);
-		urb->setup_packet = NULL;
-	}
-
-	if (urb->transfer_buffer) {
-		kfree(urb->transfer_buffer);
-		urb->transfer_buffer = NULL;
-	}
-
-	usb_free_urb(urb);
-	return;
-}
-
-
-static void send_respond(struct urb *urb, struct vudc *sdev)
-{
-
+		struct urb* urb = urb_p->urb;
 		struct usbip_header pdu_header;
 		struct usbip_iso_packet_descriptor *iso_buffer = NULL;
 		struct kvec *iov = NULL;
@@ -423,7 +495,7 @@ static void send_respond(struct urb *urb, struct vudc *sdev)
 
 		iovnum = 0;
 
-		setup_ret_submit_pdu(&pdu_header, urb);
+		setup_ret_submit_pdu(&pdu_header, urb_p);
 		usbip_dbg_stub_tx("setup txdata seqnum: %d urb: %p\n",
 				  pdu_header.base.seqnum, urb);
 		usbip_header_correct_endian(&pdu_header, 1);
@@ -444,6 +516,7 @@ static void send_respond(struct urb *urb, struct vudc *sdev)
 		kfree(iov);
 		kfree(iso_buffer);
 		free_urb(urb);
+		free_urbp(urb_p);
 }
 
 /* some members of urb must be substituted before. */
@@ -466,7 +539,7 @@ int usbip_recv_xbuff(struct usbip_device *ud, struct urb *urb)
 
 	printk(KERN_ERR "Odbieram dodatkowy transfer_buffer - po stronie vudc");
 	ret = usbip_recv(ud->tcp_socket, urb->transfer_buffer, size);
-	if (ret != size) 
+	if (ret != size)
 			return -EPIPE;
 
 	return ret;
@@ -643,118 +716,97 @@ static int handle_control_request(struct vudc *sdev, struct urb *urb,
 	return ret_val;
 }
 
-static int alloc_urb_from_cmd(struct urb **urbp, struct usbip_header *pdu)
+
+static void v_timer(unsigned long _vudc)
 {
-	struct urb* urb;
-	/* TODO - support isoc packets */
-	urb = usb_alloc_urb(0, GFP_KERNEL);
-	if (!urb)
-		goto err;
-	
-	usbip_pack_pdu(pdu, urb, USBIP_CMD_SUBMIT, 0);
+	struct vudc *sdev = (struct vudc *) _vudc;
+	struct urbp *urb_p, *tmp;
+	unsigned long flags;
+	int setup_handled;
+	int ret = 0;
 
-	if (urb->transfer_buffer_length > 0) {
-		urb->transfer_buffer = kzalloc(urb->transfer_buffer_length,
-			GFP_KERNEL);
-		if(!urb->transfer_buffer)
-			goto free_urb;
+	spin_lock_irqsave(&sdev->lock, flags);
+
+	list_for_each_entry_safe(urb_p, tmp, &sdev->urb_q, urb_q) {
+		struct urb *urb = urb_p->urb;
+		struct vep *ep = urb_p->ep;
+	if (ep == NULL) {
+		/* TODO - setup urb properly as error*/
 	}
+	if (ep == &sdev->ep[0]) {
+		/* TODO - flush any stale requests */
+			setup_handled = handle_control_request(sdev, urb,
+			                (struct usb_ctrlrequest *) urb->setup_packet, &ret);
+			if (setup_handled > 0) {
+				spin_unlock(&sdev->lock);
+				ret = sdev->driver->setup(&sdev->gadget,
+				                    (struct usb_ctrlrequest *) urb->setup_packet);
+				spin_lock(&sdev->lock);
+			}
+		}
+		if (ret >= 0) {
+			/* TODO - when different types are coded in, treat like bulk */
+		}
+		else {
+			urb->status = -EPIPE;
+			urb->actual_length = 0;
+			goto return_urb;
+		}
 
-	urb->setup_packet = kmemdup(&pdu->u.cmd_submit.setup, 8,
-	                    GFP_KERNEL);
-	if(!urb->setup_packet)
-		goto free_buffer;
+		printk(KERN_ERR "Przed make transfer\n");
+		transfer(sdev, urb, ep);
 
-	/* FIXME - we only setup pipe enough for usbip functions
-	 * to behave nicely */
-	if (pdu->base.direction == USBIP_DIR_IN)
-		urb->pipe |= USB_DIR_IN;
-	else
-		urb->pipe &= (~USB_DIR_IN);
+		/* FIXME - what does dummy_hcd actually do here? */
+		if (urb->status == -EINPROGRESS)
+			continue;
 
-	*urbp = urb;
-	return 0;
-
-free_buffer:
-	kfree(urb->transfer_buffer);
-	urb->transfer_buffer = NULL;
-free_urb:
-	usb_free_urb(urb);
-err:
-	return -ENOMEM;
+	return_urb:
+		printk(KERN_ERR "Przed respond\n");
+		spin_lock(&sdev->lock_tx);
+		list_move_tail(&urb_p->urb_q, &sdev->priv_tx);
+		spin_unlock(&sdev->lock_tx);
+		wake_up(&sdev->tx_waitq);
+	}
+	spin_unlock_irqrestore(&sdev->lock, flags);
 }
 
 static void stub_recv_cmd_submit(struct vudc *sdev,
 				 struct usbip_header *pdu)
 {
 	int ret;
-	struct vrequest *priv;
-	struct vep *vep;
-	struct urb *urb;
-	struct urb **urbp = &urb;
+	struct urbp* urb_p = alloc_urbp();
 	u8 address;
-	int setup_handled = 1;
 	unsigned long flags;
 
-	priv = kzalloc(sizeof(struct vrequest), GFP_KERNEL);
-	
+	/*TODO - handle -ENOMEM*/
+
 	/* base.ep is pipeendpoint(pipe) */
 	address = pdu->base.ep;
 	if (pdu->base.direction == USBIP_DIR_IN)
 		address |= USB_DIR_IN;
 
-	vep = find_endpoint(sdev, address);
+	urb_p->ep = find_endpoint(sdev, address);
 
-	priv->seqnum = pdu->base.seqnum;
-	priv->sdev = sdev;
-	printk(KERN_ERR "Ustawiam %p priv->seqnum na %d", priv, pdu->base.seqnum);
-	printk(KERN_ERR "Otrzymuje: %p priv->seqnum na %lu", priv, priv->seqnum);
+	urb_p->seqnum = pdu->base.seqnum;
 
-	ret = alloc_urb_from_cmd(urbp, pdu);
+	ret = alloc_urb_from_cmd(&urb_p->urb, pdu);
 	if (ret) {
 		/* TODO - handle -ENOMEM */
 		return;
 	}
-
-	urb = *urbp;
-	priv->urb = urb;
-	urb->context                = (void *) priv;
 	 
-	usbip_recv_xbuff(&sdev->udev, urb);
+	usbip_recv_xbuff(&sdev->udev, urb_p->urb);
 
 	usbip_dump_header(pdu);
-	usbip_dump_urb(urb);
+	usbip_dump_urb(urb_p->urb);
 
 	printk(KERN_ERR "Przed setup\n");
 
 	spin_lock_irqsave(&sdev->lock, flags);
-	if(vep == &sdev->ep[0]) {
-		/* TODO - flush any stale requests */
-		setup_handled = handle_control_request(sdev, urb,
-		                (struct usb_ctrlrequest *) urb->setup_packet, &ret);
-		if (setup_handled > 0)
-			spin_unlock(&sdev->lock);
-			ret = sdev->driver->setup(&sdev->gadget,
-			                    (struct usb_ctrlrequest *) urb->setup_packet);
-			spin_lock(&sdev->lock);
-	}
-	if (ret >= 0) {
-		/* TODO - when different types are coded in, treat like bulk */
-	}
-	else {
-		urb->status = -EPIPE;
-		urb->actual_length = 0;
-		spin_unlock_irqrestore(&sdev->lock, flags);
-		goto return_urb;
-	}
-
-	printk(KERN_ERR "Przed make transfer\n");
-	transfer(sdev, priv->urb, vep);
+	if (!timer_pending(&sdev->tr_timer) && list_empty(&sdev->urb_q))
+		mod_timer(&sdev->tr_timer, jiffies + 1);
+	list_add_tail(&urb_p->urb_q, &sdev->urb_q);
 	spin_unlock_irqrestore(&sdev->lock, flags);
-
-return_urb:
-	printk(KERN_ERR "Przed respond\n");
-	send_respond(priv->urb, sdev);
 
 	usbip_dbg_stub_rx("Leave\n");
 }
@@ -811,14 +863,46 @@ int stub_rx_loop(void *data)
 
 /* ************************************************************************************************************ */
 
-int thread_tx(void *data)
+int v_send_ret_submit(struct vudc * sdev)
 {
-	debug_print("[vudc] *** thread_tx ***\n");
+	spin_lock(&sdev->lock_tx);
 
-	debug_print("[vudc] ### thread_tx ###\n");
+	while(!list_empty(&sdev->priv_tx)) {
+		struct list_head *urbh = sdev->priv_tx.next;
+		struct urbp *urb_p = list_entry(urbh, struct urbp, urb_q);
+		list_del_init(urbh);
+		spin_unlock(&sdev->lock_tx);
+
+		send_respond(urb_p, sdev);
+		spin_lock(&sdev->lock_tx);
+	}
+	spin_unlock(&sdev->lock_tx);
+	return 0;
+}
+
+int stub_tx_loop(void *data)
+{
+	struct usbip_device * udev = (struct usbip_device *) data;
+	struct vudc * sdev = container_of(udev, struct vudc, udev);
+
+	debug_print("[vudc] *** stub_tx_loop ***\n");
+
+	while (!kthread_should_stop()) {
+		/* TODO - handle usbip events */
+		if (v_send_ret_submit(sdev) < 0)
+			break;
+		/* TODO - handle unlink */
+
+		wait_event_interruptible(sdev->tx_waitq,
+						(!list_empty(&sdev->priv_tx) ||
+						kthread_should_stop()));
+	}
+
+	debug_print("[vudc] ### stub_tx_loop ###\n");
 
 	return 0;
 }
+
 static ssize_t store_sockfd(struct device *dev, struct device_attribute *attr,
 		     const char *in, size_t count)
 {
@@ -848,8 +932,9 @@ static ssize_t store_sockfd(struct device *dev, struct device_attribute *attr,
 
 	/*  Now create threads to take care of transmition */
 
-	vudc->udev.tcp_rx = kthread_run(&stub_rx_loop, &vudc->udev, "vudc_rx");
-	
+	vudc->udev.tcp_rx = kthread_get_run(&stub_rx_loop, &vudc->udev, "vudc_rx");
+	vudc->udev.tcp_tx = kthread_get_run(&stub_tx_loop, &vudc->udev, "vudc_tx");
+
 	debug_print("[vudc] ### example_out ###\n");
 
 	return count;
@@ -1118,9 +1203,9 @@ static int vgadget_pullup(struct usb_gadget *_gadget, int value)
 static int vgadget_udc_start(struct usb_gadget *g,
 		struct usb_gadget_driver *driver)
 {
-	struct vudc *vudc = usb_gadget_to_vudc(g);		
+	struct vudc *vudc = usb_gadget_to_vudc(g);
 	debug_print("[vudc] *** vgadget_udc_start ***\n");
-	
+
 	vudc->driver = driver;
 
 	/* TODO */
@@ -1165,12 +1250,19 @@ static int init_vudc_hw(struct vudc *vudc)
 		ep->ep.max_streams = 16;
 		ep->gadget = &vudc->gadget;
 
-		INIT_LIST_HEAD(&ep->queue);
 	}
+
+	spin_lock_init(&vudc->lock);
+	spin_lock_init(&vudc->lock_tx);
+	INIT_LIST_HEAD(&vudc->urb_q);
+	INIT_LIST_HEAD(&vudc->priv_tx);
+	INIT_LIST_HEAD(&vudc->unlink_tx);
+	init_waitqueue_head(&vudc->tx_waitq);
 
 	vudc->gadget.ep0 = &vudc->ep[0].ep;
 	list_del_init(&vudc->ep[0].ep.ep_list);
 
+	setup_timer(&vudc->tr_timer, v_timer, (unsigned long) vudc);
 	/* TODO */
 	debug_print("[vudc] ### init_vudc_hw ###\n");
 	return 0;
