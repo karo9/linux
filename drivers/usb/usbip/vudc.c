@@ -433,7 +433,7 @@ top:
 		if (req->req.status != -EINPROGRESS) {
 
             //printk(KERN_ERR "transfer - device side completion\n");
-            
+
 			list_del_init(&req->queue);
 			spin_unlock(&sdev->lock);
 			usb_gadget_giveback_request(&ep->ep, &req->req);
@@ -745,6 +745,7 @@ static void v_timer(unsigned long _vudc)
 			}
 		}
 		if (ret >= 0) {
+			urb->status = 0;
 			/* TODO - when different types are coded in, treat like bulk */
 		}
 		else {
@@ -794,7 +795,8 @@ static void stub_recv_cmd_submit(struct vudc *sdev,
 		/* TODO - handle -ENOMEM */
 		return;
 	}
-	 
+
+	urb_p->urb->status = -EINPROGRESS;
 	usbip_recv_xbuff(&sdev->udev, urb_p->urb);
 
 	usbip_dump_header(pdu);
