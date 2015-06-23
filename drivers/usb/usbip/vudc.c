@@ -384,7 +384,7 @@ top:
 			}
 			is_short = (len % ep->ep.maxpacket) != 0;
 
-			if(urb->pipe == USBIP_DIR_IN)
+			if(urb->pipe | USB_DIR_IN)
 				memcpy(urb->transfer_buffer, req->req.buf, len);
 			else
 				memcpy(req->req.buf, urb->transfer_buffer, len);
@@ -527,7 +527,7 @@ int usbip_recv_xbuff(struct usbip_device *ud, struct urb *urb)
 
 
 	printk(KERN_ERR "[xbuff] uno");
-	if (urb->pipe == USBIP_DIR_IN)
+	if (urb->pipe | USB_DIR_IN)
 		return 0;
 
 	size = urb->transfer_buffer_length;
@@ -1251,7 +1251,7 @@ static int init_vudc_hw(struct vudc *vudc)
 		usb_ep_set_maxpacket_limit(&ep->ep, ~0);
 		ep->ep.max_streams = 16;
 		ep->gadget = &vudc->gadget;
-
+		INIT_LIST_HEAD(&ep->queue);
 	}
 
 	spin_lock_init(&vudc->lock);
