@@ -79,6 +79,7 @@ struct vep {
 	struct list_head queue; // Request queue
 	unsigned halted:1;
 	unsigned wedged:1;
+	unsigned already_seen:1;
 };
 
 /* container for usb_request to store some request related data */
@@ -723,16 +724,27 @@ static void v_timer(unsigned long _vudc)
 	struct urbp *urb_p, *tmp;
 	unsigned long flags;
 	int setup_handled;
-	int ret = 0;
+	int i, ret = 0;
 
 	spin_lock_irqsave(&sdev->lock, flags);
+
+	for (i = 0; i < VIRTUAL_ENDPOINTS; i++) {
+		if (!ep_name[i])
+			break;
+		sdev->ep[i].already_seen = 0;
+	}
 
 	list_for_each_entry_safe(urb_p, tmp, &sdev->urb_q, urb_q) {
 		struct urb *urb = urb_p->urb;
 		struct vep *ep = urb_p->ep;
-	if (ep == NULL) {
-		/* TODO - setup urb properly as error*/
+	if (!ep) {
+		urb->status = -EPROTO;
+		goto return_urb;
 	}
+
+	if (ep->already_seen)
+		continue;
+	ep->already_seen = 1;
 	if (ep == &sdev->ep[0]) {
 		/* TODO - flush any stale requests */
 			setup_handled = handle_control_request(sdev, urb,
@@ -743,7 +755,6 @@ static void v_timer(unsigned long _vudc)
 				                    (struct usb_ctrlrequest *) urb->setup_packet);
 				spin_lock(&sdev->lock);
 			}
-		}
 		if (ret >= 0) {
 			urb->status = 0;
 			/* TODO - when different types are coded in, treat like bulk */
@@ -753,6 +764,7 @@ static void v_timer(unsigned long _vudc)
 			urb->actual_length = 0;
 			goto return_urb;
 		}
+	}
 
 		printk(KERN_ERR "Przed make transfer\n");
 		transfer(sdev, urb, ep);
@@ -763,6 +775,8 @@ static void v_timer(unsigned long _vudc)
 
 	return_urb:
 		printk(KERN_ERR "Przed respond\n");
+		if (ep)
+			ep->already_seen = 0;
 		spin_lock(&sdev->lock_tx);
 		list_move_tail(&urb_p->urb_q, &sdev->priv_tx);
 		spin_unlock(&sdev->lock_tx);
