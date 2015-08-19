@@ -358,6 +358,7 @@ top:
 	/* if there's no request queued, the device is NAKing; return */
 	list_for_each_entry(req, &ep->queue, queue) {
 		unsigned	host_len, dev_len, len;
+		void		*ubuf_pos, *rbuf_pos;
 		int		is_short, to_host;
 		int		rescan = 0;
 
@@ -385,10 +386,13 @@ top:
 			}
 			is_short = (len % ep->ep.maxpacket) != 0;
 
+			ubuf_pos = urb->transfer_buffer + urb->actual_length;
+			rbuf_pos = req->req.buf + req->req.actual;
+
 			if(urb->pipe | USB_DIR_IN)
-				memcpy(urb->transfer_buffer, req->req.buf, len);
+				memcpy(ubuf_pos, rbuf_pos, len);
 			else
-				memcpy(req->req.buf, urb->transfer_buffer, len);
+				memcpy(rbuf_pos, ubuf_pos, len);
 
 			urb->actual_length += len;
 			req->req.actual += len;
@@ -1105,6 +1109,7 @@ static int vep_queue(struct usb_ep *_ep, struct usb_request *_req,
 	vudc = ep_to_vudc(ep);
 
 	_req->actual = 0;
+	_req->status = -EINPROGRESS;
 
 	debug_print("[vudc] actual length: %d length: %d\n", _req->actual, _req->length);
 	print_hex_dump(KERN_DEBUG, "vep_queue", DUMP_PREFIX_OFFSET, 16, 4, _req->buf, _req->length, false);
