@@ -604,7 +604,11 @@ static int handle_control_request(struct vudc *sdev, struct urb *urb,
 	w_value = le16_to_cpu(setup->wValue);
 	switch (setup->bRequest) {
 	case USB_REQ_SET_ADDRESS:
+		if (setup->bRequestType != Dev_Request)
+			break;
 		sdev->address = w_value;
+		ret_val = 0;
+		*status = 0;
 		break;
 	case USB_REQ_SET_FEATURE:
 		if (setup->bRequestType == Dev_Request) {
@@ -748,7 +752,7 @@ static void v_timer(unsigned long _vudc)
 	if (ep == &sdev->ep[0]) {
 		/* TODO - flush any stale requests */
 			setup_handled = handle_control_request(sdev, urb,
-			                (struct usb_ctrlrequest *) urb->setup_packet, &ret);
+			                (struct usb_ctrlrequest *) urb->setup_packet, (&urb->status));
 			if (setup_handled > 0) {
 				spin_unlock(&sdev->lock);
 				ret = sdev->driver->setup(&sdev->gadget,
@@ -756,7 +760,6 @@ static void v_timer(unsigned long _vudc)
 				spin_lock(&sdev->lock);
 			}
 		if (ret >= 0) {
-			urb->status = 0;
 			/* TODO - when different types are coded in, treat like bulk */
 		}
 		else {
