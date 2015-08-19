@@ -532,7 +532,7 @@ int usbip_recv_xbuff(struct usbip_device *ud, struct urb *urb)
 
 
 	printk(KERN_ERR "[xbuff] uno");
-	if (urb->pipe | USB_DIR_IN)
+	if (urb->pipe & USB_DIR_IN)
 		return 0;
 
 	size = urb->transfer_buffer_length;
