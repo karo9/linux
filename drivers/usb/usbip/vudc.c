@@ -389,7 +389,7 @@ top:
 			ubuf_pos = urb->transfer_buffer + urb->actual_length;
 			rbuf_pos = req->req.buf + req->req.actual;
 
-			if(urb->pipe | USB_DIR_IN)
+			if(urb->pipe & USB_DIR_IN)
 				memcpy(ubuf_pos, rbuf_pos, len);
 			else
 				memcpy(rbuf_pos, ubuf_pos, len);
@@ -499,21 +499,21 @@ static void send_respond(struct urbp *urb_p, struct vudc *sdev)
 		iov = kcalloc(iovnum, sizeof(struct kvec), GFP_KERNEL);
 
 		iovnum = 0;
-
 		setup_ret_submit_pdu(&pdu_header, urb_p);
 		usbip_dbg_stub_tx("setup txdata seqnum: %d urb: %p\n",
 				  pdu_header.base.seqnum, urb);
 		usbip_header_correct_endian(&pdu_header, 1);
-
 		iov[iovnum].iov_base = &pdu_header;
 		iov[iovnum].iov_len  = sizeof(pdu_header);
 		iovnum++;
 		txsize += sizeof(pdu_header);
 
-		iov[iovnum].iov_base = urb->transfer_buffer;
-		iov[iovnum].iov_len  = urb->actual_length;
-		iovnum++;
-		txsize += urb->actual_length;
+		if (usb_pipein(urb->pipe) && urb->actual_length > 0) {
+			iov[iovnum].iov_base = urb->transfer_buffer;
+			iov[iovnum].iov_len  = urb->actual_length;
+			iovnum++;
+			txsize += urb->actual_length;
+		}
 
 		kernel_sendmsg(sdev->udev.tcp_socket, &msg,
 						iov,  iovnum, txsize);
@@ -972,6 +972,7 @@ static int vep_enable(struct usb_ep *_ep,
 	struct vep *ep;
 	struct vudc *sdev;
 	int retval;
+	unsigned maxp;
 
 	debug_print("[vudc] *** enable ***\n");
 
@@ -984,6 +985,8 @@ static int vep_enable(struct usb_ep *_ep,
 		return -ESHUTDOWN;
 
 	/* TODO - check if in state allowing for enable */
+
+	maxp = usb_endpoint_maxp(desc) & 0x7ff;
 
 	retval = -EINVAL;
 	switch (usb_endpoint_type(desc)) {
@@ -1000,21 +1003,20 @@ static int vep_enable(struct usb_ep *_ep,
 		if (strstr(ep->ep.name, "-bulk")
 				|| strstr(ep->ep.name, "-int"))
 			goto done;
+		break;
 	default:
 		goto done;
 	}
 
-	switch (desc->bEndpointAddress & USB_DIR_IN) {
-	case USB_DIR_IN:
+	if (desc->bEndpointAddress & USB_DIR_IN) {
 		if (strstr(ep->ep.name, "out"))
 			goto done;
-	case 0:
+	} else {
 		if (strstr(ep->ep.name, "in"))
 			goto done;
-	default:
-		goto done;
 	}
 
+	_ep->maxpacket = maxp;
 	ep->desc = desc;
 	ep->halted = ep->wedged = 0;
 	retval = 0;
@@ -1270,9 +1272,11 @@ static int init_vudc_hw(struct vudc *vudc)
 		ep->ep.name = ep_name[i];
 		ep->ep.ops = &vep_ops;
 		list_add_tail(&ep->ep.ep_list, &vudc->gadget.ep_list);
+		ep->halted = ep->wedged = ep->already_seen = 0;
 		usb_ep_set_maxpacket_limit(&ep->ep, ~0);
 		ep->ep.max_streams = 16;
 		ep->gadget = &vudc->gadget;
+		ep->desc = NULL;
 		INIT_LIST_HEAD(&ep->queue);
 	}
 
