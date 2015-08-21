@@ -827,7 +827,7 @@ static void stub_recv_cmd_submit(struct vudc *sdev,
 	printk(KERN_ERR "Przed setup\n");
 
 	spin_lock_irqsave(&sdev->lock, flags);
-	if (!timer_pending(&sdev->tr_timer) && list_empty(&sdev->urb_q))
+	if (!timer_pending(&sdev->tr_timer))
 		mod_timer(&sdev->tr_timer, jiffies + 1);
 	list_add_tail(&urb_p->urb_q, &sdev->urb_q);
 	spin_unlock_irqrestore(&sdev->lock, flags);
