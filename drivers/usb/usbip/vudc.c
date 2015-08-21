@@ -942,24 +942,39 @@ static ssize_t store_sockfd(struct device *dev, struct device_attribute *attr,
 	if (rv != 1)
 		return -EINVAL;
 
-	socket = sockfd_lookup(sockfd, &err);
-	if(!socket)
-	{
-		debug_print("[vudc] Failed to lookup sock");
-		return -EINVAL;
+	if (sockfd != 1) {
+		spin_lock_irq(&vudc->udev.lock);
+
+		if (vudc->udev.status != SDEV_ST_AVAILABLE) {
+			goto err;
+		}
+
+		socket = sockfd_lookup(sockfd, &err);
+		if (!socket) {
+			debug_print("[vudc] Failed to lookup sock");
+			goto err;
+		}
+
+		vudc->udev.tcp_socket = socket;
+
+		spin_unlock_irq(&vudc->udev.lock);
+
+		vudc->udev.tcp_rx = kthread_get_run(&stub_rx_loop, &vudc->udev, "vudc_rx");
+		vudc->udev.tcp_tx = kthread_get_run(&stub_tx_loop, &vudc->udev, "vudc_tx");
+
+		spin_lock_irq(&vudc->udev.lock);
+		vudc->udev.status = SDEV_ST_USED;
+		spin_unlock_irq(&vudc->udev.lock);
+
+	} else {
+	/* TODO */
 	}
 
-	vudc->udev.side = USBIP_VUDC;
-	vudc->udev.tcp_socket = socket;
-
-	/*  Now create threads to take care of transmition */
-
-	vudc->udev.tcp_rx = kthread_get_run(&stub_rx_loop, &vudc->udev, "vudc_rx");
-	vudc->udev.tcp_tx = kthread_get_run(&stub_tx_loop, &vudc->udev, "vudc_tx");
-
-	debug_print("[vudc] ### example_out ###\n");
-
 	return count;
+
+err:
+	spin_unlock_irq(&vudc->udev.lock);
+	return -EINVAL;
 }
 static DEVICE_ATTR(vudc_sockfd, S_IWUSR, NULL, store_sockfd);
 
@@ -1299,6 +1314,10 @@ static int init_vudc_hw(struct vudc *vudc)
 	INIT_LIST_HEAD(&vudc->priv_tx);
 	INIT_LIST_HEAD(&vudc->unlink_tx);
 	init_waitqueue_head(&vudc->tx_waitq);
+
+	spin_lock_init(&udev->lock);
+	udev->status = SDEV_ST_AVAILABLE;
+	udev->side = USBIP_VUDC; /* FIXME - add to common*/
 
 	udev->eh_ops.shutdown = vudc_shutdown;
 	udev->eh_ops.reset    = vudc_device_reset;
