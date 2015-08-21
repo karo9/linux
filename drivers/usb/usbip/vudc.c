@@ -72,6 +72,7 @@ static const char *const ep_name[] = {
 /* container for usb_ep to store some endpoint related data */
 struct vep {
 	struct usb_ep ep;
+	unsigned type:2;
 	/* Add here some fields if needed */
 
 	const struct usb_endpoint_descriptor *desc;
@@ -491,7 +492,7 @@ static void send_respond(struct urbp *urb_p, struct vudc *sdev)
 		memset(&pdu_header, 0, sizeof(pdu_header));
 		memset(&msg, 0, sizeof(msg));
 
-		if (usb_pipetype(urb->pipe) == PIPE_ISOCHRONOUS)
+		if (urb_p->ep->type == USB_ENDPOINT_XFER_ISOC)
 			iovnum = 2 + urb->number_of_packets;
 		else
 			iovnum = 2;
@@ -1018,6 +1019,7 @@ static int vep_enable(struct usb_ep *_ep,
 
 	_ep->maxpacket = maxp;
 	ep->desc = desc;
+	ep->type = usb_endpoint_type(desc);
 	ep->halted = ep->wedged = 0;
 	retval = 0;
 
