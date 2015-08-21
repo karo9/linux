@@ -107,8 +107,6 @@ struct vudc {
 	/* Add here some fields if needed */
 
 	struct usbip_device udev;
-	struct task_struct *vudc_rx;
-	struct task_struct *vudc_tx;
 	struct timer_list tr_timer;
 
 	struct list_head urb_q;
