@@ -1258,9 +1258,22 @@ static const struct usb_gadget_ops vgadget_ops = {
 	.udc_stop	= vgadget_udc_stop,
 };
 
+static void vudc_shutdown(struct usbip_device *ud)
+{
+}
+
+static void vudc_device_reset(struct usbip_device *ud)
+{
+}
+
+static void vudc_device_unusable(struct usbip_device *ud)
+{
+}
+
 static int init_vudc_hw(struct vudc *vudc)
 {
 	int i;
+	struct usbip_device *udev = &vudc->udev;
 
 	debug_print("[vudc] *** init_vudc_hw ***\n");
 
@@ -1288,6 +1301,12 @@ static int init_vudc_hw(struct vudc *vudc)
 	INIT_LIST_HEAD(&vudc->priv_tx);
 	INIT_LIST_HEAD(&vudc->unlink_tx);
 	init_waitqueue_head(&vudc->tx_waitq);
+
+	udev->eh_ops.shutdown = vudc_shutdown;
+	udev->eh_ops.reset    = vudc_device_reset;
+	udev->eh_ops.unusable = vudc_device_unusable;
+
+	usbip_start_eh(udev);
 
 	vudc->gadget.ep0 = &vudc->ep[0].ep;
 	list_del_init(&vudc->ep[0].ep.ep_list);
