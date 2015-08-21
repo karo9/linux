@@ -483,6 +483,7 @@ static void send_respond(struct urbp *urb_p, struct vudc *sdev)
 		struct usbip_iso_packet_descriptor *iso_buffer = NULL;
 		struct kvec *iov = NULL;
 		int iovnum = 0;
+		int ret;
 		size_t txsize;
 		struct msghdr msg;
 
@@ -497,6 +498,10 @@ static void send_respond(struct urbp *urb_p, struct vudc *sdev)
 
 		iov = kcalloc(iovnum, sizeof(struct kvec), GFP_KERNEL);
 
+		if (!iov) {
+			usbip_event_add(&sdev->udev, SDEV_EVENT_ERROR_MALLOC);
+			return;
+		}
 		iovnum = 0;
 		setup_ret_submit_pdu(&pdu_header, urb_p);
 		usbip_dbg_stub_tx("setup txdata seqnum: %d urb: %p\n",
@@ -514,8 +519,13 @@ static void send_respond(struct urbp *urb_p, struct vudc *sdev)
 			txsize += urb->actual_length;
 		}
 
-		kernel_sendmsg(sdev->udev.tcp_socket, &msg,
+		ret = kernel_sendmsg(sdev->udev.tcp_socket, &msg,
 						iov,  iovnum, txsize);
+		if (ret != txsize) {
+			kfree(iov);
+			kfree(iso_buffer);
+			usbip_event_add(&sdev->udev, SDEV_EVENT_ERROR_TCP);
+		}
 
 		kfree(iov);
 		kfree(iso_buffer);
@@ -799,7 +809,10 @@ static void stub_recv_cmd_submit(struct vudc *sdev,
 	u8 address;
 	unsigned long flags;
 
-	/*TODO - handle -ENOMEM*/
+	if (!urb_p) {
+		usbip_event_add(&sdev->udev, SDEV_EVENT_ERROR_MALLOC);
+		return;
+	}
 
 	/* base.ep is pipeendpoint(pipe) */
 	address = pdu->base.ep;
@@ -812,12 +825,14 @@ static void stub_recv_cmd_submit(struct vudc *sdev,
 
 	ret = alloc_urb_from_cmd(&urb_p->urb, pdu);
 	if (ret) {
-		/* TODO - handle -ENOMEM */
+		usbip_event_add(&sdev->udev, SDEV_EVENT_ERROR_MALLOC);
 		return;
 	}
 
 	urb_p->urb->status = -EINPROGRESS;
-	usbip_recv_xbuff(&sdev->udev, urb_p->urb);
+	ret = usbip_recv_xbuff(&sdev->udev, urb_p->urb);
+	if (ret < 0)
+		usbip_event_add(&sdev->udev, SDEV_EVENT_ERROR_TCP);
 
 	usbip_dump_header(pdu);
 	usbip_dump_urb(urb_p->urb);
@@ -833,7 +848,7 @@ static void stub_recv_cmd_submit(struct vudc *sdev,
 	usbip_dbg_stub_rx("Leave\n");
 }
 
-static int stub_rx_pdu(struct usbip_device *ud)
+static void stub_rx_pdu(struct usbip_device *ud)
 {
 	int ret;
 	struct usbip_header pdu;
@@ -843,10 +858,19 @@ static int stub_rx_pdu(struct usbip_device *ud)
 
 	memset(&pdu, 0, sizeof(pdu));
 	ret = usbip_recv(ud->tcp_socket, &pdu, sizeof(pdu));
-	if(ret == 0) {
-		return -1;
+	if(ret != sizeof(pdu)) {
+		usbip_event_add(ud, SDEV_EVENT_ERROR_TCP);
+		return;
 	}
 	usbip_header_correct_endian(&pdu, 0);
+
+	spin_lock_irq(&ud->lock);
+	ret = (ud->status == SDEV_ST_USED);
+	spin_unlock_irq(&ud->lock);
+	if (!ret) {
+		usbip_event_add(ud, SDEV_EVENT_ERROR_TCP);
+		return;
+	}
 
 	switch (pdu.base.command) {
 	case USBIP_CMD_UNLINK:
@@ -862,16 +886,18 @@ static int stub_rx_pdu(struct usbip_device *ud)
 		//dev_err(dev, "unknown pdu\n");
 		break;
 	}
-	return 0;
+	return;
 }
 
 int stub_rx_loop(void *data)
 {
 	struct usbip_device *ud = data;
 
-	while (!kthread_should_stop())
-		if(stub_rx_pdu(ud) == -1)
+	while (!kthread_should_stop()) {
+		if (usbip_event_happened(ud))
 			break;
+		stub_rx_pdu(ud);
+	}
 
 	return 0;
 }
@@ -910,7 +936,8 @@ int stub_tx_loop(void *data)
 	debug_print("[vudc] *** stub_tx_loop ***\n");
 
 	while (!kthread_should_stop()) {
-		/* TODO - handle usbip events */
+		if (usbip_event_happened(&sdev->udev))
+			break;
 		if (v_send_ret_submit(sdev) < 0)
 			break;
 		/* TODO - handle unlink */
@@ -967,7 +994,12 @@ static ssize_t store_sockfd(struct device *dev, struct device_attribute *attr,
 		spin_unlock_irq(&vudc->udev.lock);
 
 	} else {
-	/* TODO */
+		spin_lock_irq(&vudc->udev.lock);
+		if (vudc->udev.status != SDEV_ST_USED)
+			goto err;
+		spin_unlock_irq(&vudc->udev.lock);
+
+		usbip_event_add(&vudc->udev, SDEV_EVENT_DOWN);
 	}
 
 	return count;
