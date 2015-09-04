@@ -347,6 +347,27 @@ static void nuke(struct vudc *sdev, struct vep *ep)
 	}
 }
 
+/* caller must hold lock */
+static void stop_activity(struct vudc *sdev)
+{
+	int i;
+	struct vep *ep;
+	struct urbp *urb_p, *tmp;
+	
+	sdev->address = 0;
+
+	for (i = 0; i < VIRTUAL_ENDPOINTS; i++) {
+		if (!ep_name[i])
+			break;
+		nuke(sdev, ep);
+	}
+
+	list_for_each_entry_safe(urb_p, tmp, &sdev->urb_q, urb_q) {
+		list_del(&urb_p->urb_q);
+		free_urbp(urb_p);
+	}
+}
+
 /* Adapted from dummy_hcd.c ; caller must hold lock */
 static void transfer(struct vudc* sdev,
 		struct urb *urb, struct vep *ep)
@@ -1305,14 +1326,56 @@ static const struct usb_gadget_ops vgadget_ops = {
 
 static void vudc_shutdown(struct usbip_device *ud)
 {
+	struct vudc *sdev = container_of(ud, struct vudc, udev);
+	unsigned long flags;
+
+	if (ud->tcp_socket)
+		kernel_sock_shutdown(ud->tcp_socket, SHUT_RDWR);
+
+	if (ud->tcp_tx) {
+		kthread_stop_put(ud->tcp_rx);
+		ud->tcp_rx = NULL;
+	}
+	if (ud->tcp_tx) {
+		kthread_stop_put(ud->tcp_tx);
+		ud->tcp_tx = NULL;
+	}
+
+	if (ud->tcp_socket) {
+		sockfd_put(ud->tcp_socket);
+		ud->tcp_socket = NULL;
+	}
+
+	spin_lock_irqsave(&sdev->lock, flags);
+	stop_activity(sdev);
+	spin_unlock_irqrestore(&sdev->lock, flags);
+	sdev->driver->disconnect(&sdev->gadget);
 }
 
 static void vudc_device_reset(struct usbip_device *ud)
 {
+	struct vudc *sdev = container_of(ud, struct vudc, udev);
+	int ret;
+	unsigned long flags;
+
+	spin_lock_irqsave(&sdev->lock, flags);
+	stop_activity(sdev);
+	spin_unlock_irqrestore(&sdev->lock, flags);
+	if (sdev->driver->reset)
+		sdev->driver->reset(&sdev->gadget);
+	else
+		sdev->driver->disconnect(&sdev->gadget);
+
+	spin_lock_irq(&ud->lock);
+	ud->status = SDEV_ST_AVAILABLE;
+	spin_unlock_irq(&ud->lock);
 }
 
 static void vudc_device_unusable(struct usbip_device *ud)
 {
+	spin_lock_irq(&ud->lock);
+	ud->status = SDEV_ST_ERROR;
+	spin_unlock_irq(&ud->lock);
 }
 
 static int init_vudc_hw(struct vudc *vudc)
