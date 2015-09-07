@@ -1218,20 +1218,44 @@ static int vep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 }
 
 static int
+vep_set_halt_and_wedge(struct usb_ep *_ep, int value, int wedged)
+{
+	struct vep		*ep;
+	struct vudc		*sdev;
+
+	if (!_ep)
+		return -EINVAL;
+	ep = usb_ep_to_vep(_ep);
+	sdev = ep_to_vudc(ep);
+	if (!sdev->driver)
+		return -ESHUTDOWN;
+	if (!value)
+		ep->halted = ep->wedged = 0;
+	else if (ep->desc && (ep->desc->bEndpointAddress & USB_DIR_IN) &&
+			!list_empty(&ep->queue))
+		return -EAGAIN;
+	else {
+		ep->halted = 1;
+		if (wedged)
+			ep->wedged = 1;
+	}
+	return 0;
+}
+
+
+static int
 vep_set_halt(struct usb_ep *_ep, int value)
 {
 	debug_print("[vudc] *** vep_set_halt ***\n");
-	/* TODO */
+	return vep_set_halt_and_wedge(_ep, value, 0);
 	debug_print("[vudc] ### vep_set_halt ###\n");
-	return -EINVAL;
 }
 
 static int vep_set_wedge(struct usb_ep *_ep)
 {
 	debug_print("[vudc] *** vep_set_wedge ***\n");
-	/* TODO */
+	return vep_set_halt_and_wedge(_ep, 1, 1);
 	debug_print("[vudc] ### vep_set_wedge ###\n");
-	return -EINVAL;
 }
 
 static const struct usb_ep_ops vep_ops = {
