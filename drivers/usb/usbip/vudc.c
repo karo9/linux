@@ -251,6 +251,8 @@ static ssize_t fetch_descriptor(struct usb_ctrlrequest* req, struct vudc* udc,
 	int copysz;
 	struct vep *ep0 = usb_ep_to_vep(udc->gadget.ep0);
 
+	if (!udc->driver)	/* No device for export */
+		return 0;
 	ret = udc->driver->setup(&(udc->gadget), req);
 	if (ret < 0) {
 		debug_print("[vudc] Failed to setup device descriptor request!\n");
@@ -354,7 +356,7 @@ static void stop_activity(struct vudc *sdev)
 {
 	int i;
 	struct urbp *urb_p, *tmp;
-	
+
 	sdev->address = 0;
 
 	for (i = 0; i < VIRTUAL_ENDPOINTS; i++) {
@@ -996,6 +998,8 @@ static ssize_t store_sockfd(struct device *dev, struct device_attribute *attr,
 	debug_print("[vudc] *** example_out ***\n");
 
 	vudc = (struct vudc*)dev_get_drvdata(dev);
+	if (!vudc || !vudc->driver) /* Don't export what we don't have */
+		return -ENODEV;
 
 	rv = sscanf(in, "%d", &sockfd);
 	if (rv != 1)
@@ -1333,9 +1337,13 @@ static int vgadget_udc_start(struct usb_gadget *g,
 		struct usb_gadget_driver *driver)
 {
 	struct vudc *vudc = usb_gadget_to_vudc(g);
+	unsigned long flags;
+
 	debug_print("[vudc] *** vgadget_udc_start ***\n");
 
+	spin_lock_irqsave(&vudc->lock, flags);
 	vudc->driver = driver;
+	spin_unlock_irqrestore(&vudc->lock, flags);
 
 	/* TODO */
 	debug_print("[vudc] ### vgadget_udc_start ###\n");
@@ -1344,7 +1352,18 @@ static int vgadget_udc_start(struct usb_gadget *g,
 
 static int vgadget_udc_stop(struct usb_gadget *g)
 {
+	struct vudc *vudc = usb_gadget_to_vudc(g);
+	unsigned long flags;
+
 	debug_print("[vudc] *** vgadget_udc_stop ***\n");
+	usbip_event_add(&vudc->udev, SDEV_EVENT_REMOVED);
+	usbip_stop_eh(&vudc->udev); /* Wait for eh completion */
+	usbip_start_eh(&vudc->udev);
+
+	spin_lock_irqsave(&vudc->lock, flags);
+	vudc->driver = NULL;
+	spin_unlock_irqrestore(&vudc->lock, flags);
+
 	/* TODO */
 	debug_print("[vudc] ### vgadget_udc_stop ###\n");
 	return 0;
@@ -1384,7 +1403,8 @@ static void vudc_shutdown(struct usbip_device *ud)
 	spin_lock_irqsave(&sdev->lock, flags);
 	stop_activity(sdev);
 	spin_unlock_irqrestore(&sdev->lock, flags);
-	sdev->driver->disconnect(&sdev->gadget);
+	if (sdev->driver) /* We might be cleaning up after driver unbind */
+		sdev->driver->disconnect(&sdev->gadget);
 }
 
 static void vudc_device_reset(struct usbip_device *ud)
@@ -1395,11 +1415,12 @@ static void vudc_device_reset(struct usbip_device *ud)
 	spin_lock_irqsave(&sdev->lock, flags);
 	stop_activity(sdev);
 	spin_unlock_irqrestore(&sdev->lock, flags);
-	if (sdev->driver->reset)
-		sdev->driver->reset(&sdev->gadget);
-	else
-		sdev->driver->disconnect(&sdev->gadget);
-
+	if (sdev->driver) {
+		if (sdev->driver->reset)
+			sdev->driver->reset(&sdev->gadget);
+		else
+			sdev->driver->disconnect(&sdev->gadget);
+	}
 	spin_lock_irq(&ud->lock);
 	ud->status = SDEV_ST_AVAILABLE;
 	spin_unlock_irq(&ud->lock);
@@ -1467,7 +1488,10 @@ static int init_vudc_hw(struct vudc *vudc)
 static void cleanup_vudc_hw(struct vudc *vudc)
 {
 	debug_print("[vudc] *** cleanup_vudc_hw ***\n");
-	/* TODO */
+
+	usbip_event_add(&vudc->udev, SDEV_EVENT_REMOVED);
+	usbip_stop_eh(&vudc->udev);
+
 	debug_print("[vudc] ### cleanup_vudc_hw ###\n");
 	return;
 }
