@@ -351,7 +351,6 @@ static void nuke(struct vudc *sdev, struct vep *ep)
 static void stop_activity(struct vudc *sdev)
 {
 	int i;
-	struct vep *ep;
 	struct urbp *urb_p, *tmp;
 	
 	sdev->address = 0;
@@ -359,7 +358,7 @@ static void stop_activity(struct vudc *sdev)
 	for (i = 0; i < VIRTUAL_ENDPOINTS; i++) {
 		if (!ep_name[i])
 			break;
-		nuke(sdev, ep);
+		nuke(sdev, &sdev->ep[i]);
 	}
 
 	list_for_each_entry_safe(urb_p, tmp, &sdev->urb_q, urb_q) {
@@ -1355,7 +1354,6 @@ static void vudc_shutdown(struct usbip_device *ud)
 static void vudc_device_reset(struct usbip_device *ud)
 {
 	struct vudc *sdev = container_of(ud, struct vudc, udev);
-	int ret;
 	unsigned long flags;
 
 	spin_lock_irqsave(&sdev->lock, flags);
