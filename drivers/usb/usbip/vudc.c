@@ -81,6 +81,7 @@ struct vep {
 	unsigned halted:1;
 	unsigned wedged:1;
 	unsigned already_seen:1;
+	unsigned setup_stage:1;
 };
 
 /* container for usb_request to store some request related data */
@@ -98,6 +99,7 @@ struct urbp {
 	struct vep *ep;
 	struct list_head urb_q;
 	unsigned long seqnum;
+	unsigned new:1;
 };
 
 struct vudc {
@@ -760,7 +762,6 @@ static void v_timer(unsigned long _vudc)
 	struct vudc *sdev = (struct vudc *) _vudc;
 	struct urbp *urb_p, *tmp;
 	unsigned long flags;
-	int setup_handled;
 	int i, ret = 0;
 
 	spin_lock_irqsave(&sdev->lock, flags);
@@ -782,20 +783,31 @@ static void v_timer(unsigned long _vudc)
 	if (ep->already_seen)
 		continue;
 	ep->already_seen = 1;
-	if (ep == &sdev->ep[0]) {
+	if (ep == &sdev->ep[0] && urb_p->new) {
+		ep->setup_stage = 1;
+		urb_p->new = 0;
+	}
+	if (ep->halted && !ep->setup_stage) {
+		urb->status = -EPIPE;
+		goto return_urb;
+	}
+
+	if (ep == &sdev->ep[0] && ep->setup_stage) {
 		/* TODO - flush any stale requests */
-			setup_handled = handle_control_request(sdev, urb,
-			                (struct usb_ctrlrequest *) urb->setup_packet, (&urb->status));
-			if (setup_handled > 0) {
-				spin_unlock(&sdev->lock);
-				ret = sdev->driver->setup(&sdev->gadget,
-				                    (struct usb_ctrlrequest *) urb->setup_packet);
-				spin_lock(&sdev->lock);
-			}
+		ep->setup_stage = 0;
+		ep->halted = 0;
+
+		ret = handle_control_request(sdev, urb,
+			(struct usb_ctrlrequest *) urb->setup_packet, (&urb->status));
+		if (ret > 0) {
+			spin_unlock(&sdev->lock);
+			ret = sdev->driver->setup(&sdev->gadget,
+				(struct usb_ctrlrequest *) urb->setup_packet);
+			spin_lock(&sdev->lock);
+		}
 		if (ret >= 0) {
 			/* TODO - when different types are coded in, treat like bulk */
-		}
-		else {
+		} else {
 			urb->status = -EPIPE;
 			urb->actual_length = 0;
 			goto return_urb;
@@ -812,7 +824,7 @@ static void v_timer(unsigned long _vudc)
 	return_urb:
 		printk(KERN_ERR "Przed respond\n");
 		if (ep)
-			ep->already_seen = 0;
+			ep->already_seen = ep->setup_stage = 0;
 		spin_lock(&sdev->lock_tx);
 		list_move_tail(&urb_p->urb_q, &sdev->priv_tx);
 		spin_unlock(&sdev->lock_tx);
@@ -840,7 +852,7 @@ static void stub_recv_cmd_submit(struct vudc *sdev,
 		address |= USB_DIR_IN;
 
 	urb_p->ep = find_endpoint(sdev, address);
-
+	urb_p->new = 1;
 	urb_p->seqnum = pdu->base.seqnum;
 
 	ret = alloc_urb_from_cmd(&urb_p->urb, pdu);
@@ -1417,7 +1429,8 @@ static int init_vudc_hw(struct vudc *vudc)
 		ep->ep.name = ep_name[i];
 		ep->ep.ops = &vep_ops;
 		list_add_tail(&ep->ep.ep_list, &vudc->gadget.ep_list);
-		ep->halted = ep->wedged = ep->already_seen = 0;
+		ep->halted = ep->wedged = ep->already_seen =
+			ep->setup_stage = 0;
 		usb_ep_set_maxpacket_limit(&ep->ep, ~0);
 		ep->ep.max_streams = 16;
 		ep->gadget = &vudc->gadget;
