@@ -1536,7 +1536,7 @@ static int vudc_remove(struct platform_device *pdev)
 static int vudc_suspend(struct platform_device *pdev, pm_message_t state)
 {
 	debug_print("[vudc] *** vudc_suspend ***\n");
-	/* TODO */
+	/* TODO - not yet implemented in USB/IP */
 	debug_print("[vudc] ### vudc_suspend ###\n");
 	return 0;
 }
@@ -1544,7 +1544,7 @@ static int vudc_suspend(struct platform_device *pdev, pm_message_t state)
 static int vudc_resume(struct platform_device *pdev)
 {
 	debug_print("[vudc] *** vudc_resume ***\n");
-	/* TODO */
+	/* TODO - not yet implemented in USB/IP */
 	debug_print("[vudc] ### vudc_resume ###\n");
 	return 0;
 }
