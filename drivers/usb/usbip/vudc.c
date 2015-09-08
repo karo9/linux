@@ -30,6 +30,8 @@
 #define DRIVER_DESC "USB over IP UDC"
 #define DRIVER_VERSION "06 March 2015"
 
+#define US_MAX_DESCR_LENGTH 1024 * 4
+
 #define DEBUG 1
 #define debug_print(...) \
 		do { if (DEBUG) printk(KERN_ERR __VA_ARGS__); } while (0)
@@ -107,6 +109,9 @@ struct vudc {
 	struct usb_gadget_driver *driver;
 	struct platform_device *dev;
 	/* Add here some fields if needed */
+
+	char *us_descr;
+	int us_descr_len;
 
 	struct usbip_device udev;
 	struct timer_list tr_timer;
@@ -287,23 +292,36 @@ exit:
 static ssize_t descriptor_show(struct device *dev,
 			       struct device_attribute *attr, char *out)
 {
-	struct vudc *udc;
+	struct vudc *sdev;
+
+	sdev = (struct vudc*) dev_get_drvdata(dev);
+	if (sdev->us_descr_len == 0)
+		return -ENODEV;
+	if (sdev->us_descr_len > PAGE_SIZE)
+		return -EIO;
+	memcpy(out, sdev->us_descr, sdev->us_descr_len);
+	return sdev->us_descr_len;
+}
+
+static ssize_t descriptor_cache(struct vudc *sdev)
+{
+	char *out = sdev->us_descr;
 	struct usb_ctrlrequest req;
 	struct usb_device_descriptor *dev_desc;
 	int ret;
 	int sz = 0;
 	int i;
+	int max_sz = US_MAX_DESCR_LENGTH;
 
-	udc = (struct vudc*) dev_get_drvdata(dev);
-	if (!udc || !udc->driver)
+	if (!sdev || !sdev->driver)
 		return -1;
 
 	req.bRequestType = USB_DIR_IN | USB_TYPE_STANDARD | USB_RECIP_DEVICE;
 	req.bRequest = USB_REQ_GET_DESCRIPTOR;
 	req.wValue = cpu_to_le16(USB_DT_DEVICE << 8);
 	req.wIndex = cpu_to_le16(0);
-	req.wLength = cpu_to_le16(PAGE_SIZE - sz);
-	ret = fetch_descriptor(&req, udc, out + sz, PAGE_SIZE - sz, PAGE_SIZE - sz);
+	req.wLength = cpu_to_le16(max_sz - sz);
+	ret = fetch_descriptor(&req, sdev, out + sz, max_sz - sz, max_sz - sz);
 	if (ret < 0) {
 		debug_print("[vudc] Could not fetch device descriptor!\n");
 		return -1;
@@ -315,17 +333,19 @@ static ssize_t descriptor_show(struct device *dev,
 	req.bRequest = USB_REQ_GET_DESCRIPTOR;
 	req.wValue = cpu_to_le16(USB_DT_CONFIG << 8);
 	req.wIndex = cpu_to_le16(0);
-	req.wLength = cpu_to_le16(PAGE_SIZE - sz);
+	req.wLength = cpu_to_le16(max_sz - sz);
 	for (i = 0; i < dev_desc->bNumConfigurations ; i++) {
 		req.wValue = cpu_to_le16((USB_DT_CONFIG << 8) | i);
-		ret = fetch_descriptor(&req, udc, out + sz,
-				       sizeof(struct usb_config_descriptor), PAGE_SIZE - sz);
+		ret = fetch_descriptor(&req, sdev, out + sz,
+				       sizeof(struct usb_config_descriptor),
+				       max_sz - sz);
 		if (ret < 0) {
 			debug_print("[vudc] Could not fetch interface descriptor!\n");
 			return -1;
 		}
 		sz += ret;
 	}
+	sdev->us_descr_len = sz;
 	return sz;
 }
 
@@ -1460,6 +1480,7 @@ static int vgadget_udc_start(struct usb_gadget *g,
 	spin_lock_irqsave(&vudc->lock, flags);
 	vudc->driver = driver;
 	spin_unlock_irqrestore(&vudc->lock, flags);
+	descriptor_cache(vudc);
 
 	/* TODO */
 	debug_print("[vudc] ### vgadget_udc_start ###\n");
@@ -1479,7 +1500,7 @@ static int vgadget_udc_stop(struct usb_gadget *g)
 	spin_lock_irqsave(&vudc->lock, flags);
 	vudc->driver = NULL;
 	spin_unlock_irqrestore(&vudc->lock, flags);
-
+	vudc->us_descr_len = 0;
 	/* TODO */
 	debug_print("[vudc] ### vgadget_udc_stop ###\n");
 	return 0;
@@ -1570,6 +1591,11 @@ static int init_vudc_hw(struct vudc *vudc)
 		INIT_LIST_HEAD(&ep->queue);
 	}
 
+	vudc->us_descr_len = 0;
+	vudc->us_descr = kmalloc(US_MAX_DESCR_LENGTH, GFP_KERNEL);
+	if (!vudc->us_descr)
+		return -ENOMEM;
+
 	spin_lock_init(&vudc->lock);
 	spin_lock_init(&vudc->lock_tx);
 	INIT_LIST_HEAD(&vudc->urb_q);
@@ -1600,6 +1626,7 @@ static void cleanup_vudc_hw(struct vudc *vudc)
 {
 	debug_print("[vudc] *** cleanup_vudc_hw ***\n");
 
+	kfree(vudc->us_descr);
 	usbip_event_add(&vudc->udev, SDEV_EVENT_REMOVED);
 	usbip_stop_eh(&vudc->udev);
 
