@@ -165,7 +165,7 @@ static int alloc_urb_from_cmd(struct urb **urbp, struct usbip_header *pdu)
 	}
 
 	urb->setup_packet = kmemdup(&pdu->u.cmd_submit.setup, 8,
-	                    GFP_KERNEL);
+			    GFP_KERNEL);
 	if(!urb->setup_packet)
 		goto free_buffer;
 
@@ -319,7 +319,7 @@ static ssize_t descriptor_show(struct device *dev,
 	for (i = 0; i < dev_desc->bNumConfigurations ; i++) {
 		req.wValue = cpu_to_le16((USB_DT_CONFIG << 8) | i);
 		ret = fetch_descriptor(&req, udc, out + sz,
-		                       sizeof(struct usb_config_descriptor), PAGE_SIZE - sz);
+				       sizeof(struct usb_config_descriptor), PAGE_SIZE - sz);
 		if (ret < 0) {
 			debug_print("[vudc] Could not fetch interface descriptor!\n");
 			return -1;
@@ -460,7 +460,7 @@ top:
 		/* device side completion --> continuable */
 		if (req->req.status != -EINPROGRESS) {
 
-            //printk(KERN_ERR "transfer - device side completion\n");
+	    //printk(KERN_ERR "transfer - device side completion\n");
 
 			list_del_init(&req->queue);
 			spin_unlock(&sdev->lock);
@@ -497,8 +497,12 @@ static void setup_ret_submit_pdu(struct usbip_header *rpdu, struct urbp *urb_p)
 	usbip_pack_pdu(rpdu, urb_p->urb, USBIP_RET_SUBMIT, 1);
 }
 
-
-
+static void setup_ret_unlink_pdu(struct usbip_header *rpdu,
+				 struct stub_unlink *unlink)
+{
+	setup_base_pdu(&rpdu->base, USBIP_RET_UNLINK, unlink->seqnum);
+	rpdu->u.ret_unlink.status = unlink->status;
+}
 
 static void send_respond(struct urbp *urb_p, struct vudc *sdev)
 {
@@ -758,6 +762,22 @@ static int handle_control_request(struct vudc *sdev, struct urb *urb,
 	return ret_val;
 }
 
+static void v_enqueue_ret_unlink(struct vudc *sdev, __u32 seqnum,
+			     __u32 status)
+{
+	struct stub_unlink *unlink;
+
+	unlink = kzalloc(sizeof(struct stub_unlink), GFP_ATOMIC);
+	if (!unlink) {
+		usbip_event_add(&sdev->udev, VDEV_EVENT_ERROR_MALLOC);
+		return;
+	}
+
+	unlink->seqnum = seqnum;
+	unlink->status = status;
+
+	list_add_tail(&unlink->list, &sdev->unlink_tx);
+}
 
 static void v_timer(unsigned long _vudc)
 {
@@ -827,11 +847,38 @@ static void v_timer(unsigned long _vudc)
 		printk(KERN_ERR "Przed respond\n");
 		if (ep)
 			ep->already_seen = ep->setup_stage = 0;
+
 		spin_lock(&sdev->lock_tx);
-		list_move_tail(&urb_p->urb_q, &sdev->priv_tx);
+		if (!urb->unlinked)
+			list_move_tail(&urb_p->urb_q, &sdev->priv_tx);
+		else
+			v_enqueue_ret_unlink(sdev, urb_p->seqnum, urb->unlinked);
 		spin_unlock(&sdev->lock_tx);
 		wake_up(&sdev->tx_waitq);
 	}
+	spin_unlock_irqrestore(&sdev->lock, flags);
+}
+
+static void stub_recv_cmd_unlink(struct vudc *sdev,
+				struct usbip_header *pdu)
+{
+	unsigned long flags;
+	struct urbp* urb_p;
+
+	spin_lock_irqsave(&sdev->lock, flags);
+	list_for_each_entry(urb_p, &sdev->urb_q, urb_q) {
+		if (urb_p->seqnum != pdu->u.cmd_unlink.seqnum)
+			continue;
+		urb_p->urb->unlinked = -ECONNRESET;
+		/* kick the timer */
+		mod_timer(&sdev->tr_timer, jiffies);
+		spin_unlock_irqrestore(&sdev->lock, flags);
+		return;
+	}
+	/* Not found, completed / not queued */
+	spin_lock(&sdev->lock_tx);
+	v_enqueue_ret_unlink(sdev, pdu->base.seqnum, 0);
+	spin_unlock(&sdev->lock_tx);
 	spin_unlock_irqrestore(&sdev->lock, flags);
 }
 
@@ -908,7 +955,7 @@ static void stub_rx_pdu(struct usbip_device *ud)
 
 	switch (pdu.base.command) {
 	case USBIP_CMD_UNLINK:
-		printk(KERN_ERR "USBIP_CMD_UNLINK - TODO\n");
+		stub_recv_cmd_unlink(sdev, &pdu);
 		break;
 
 	case USBIP_CMD_SUBMIT:
@@ -945,20 +992,68 @@ int stub_rx_loop(void *data)
 
 /* ************************************************************************************************************ */
 
+int v_send_ret_unlink(struct vudc * sdev)
+{
+	unsigned long flags;
+	struct stub_unlink *unlink;
+
+	struct msghdr msg;
+	struct kvec iov[1];
+	size_t txsize;
+
+	size_t total_size = 0;
+
+	spin_lock_irqsave(&sdev->lock_tx, flags);
+
+	while (!list_empty(&sdev->unlink_tx)) {
+		int ret;
+		struct usbip_header pdu_header;
+		unlink = list_entry(sdev->unlink_tx.next, struct stub_unlink, list);
+		spin_unlock_irqrestore(&sdev->lock_tx, flags);
+
+		txsize = 0;
+		memset(&pdu_header, 0, sizeof(pdu_header));
+		memset(&msg, 0, sizeof(msg));
+		memset(&iov, 0, sizeof(iov));
+
+		/* 1. setup usbip_header */
+		setup_ret_unlink_pdu(&pdu_header, unlink);
+		usbip_header_correct_endian(&pdu_header, 1);
+
+		iov[0].iov_base = &pdu_header;
+		iov[0].iov_len  = sizeof(pdu_header);
+		txsize += sizeof(pdu_header);
+
+		ret = kernel_sendmsg(sdev->udev.tcp_socket, &msg, iov,
+				     1, txsize);
+		if (ret != txsize) {
+			usbip_event_add(&sdev->udev, SDEV_EVENT_ERROR_TCP);
+			return -1;
+		}
+
+		total_size += txsize;
+		spin_lock_irqsave(&sdev->lock_tx, flags);
+	}
+
+	spin_unlock_irqrestore(&sdev->lock_tx, flags);
+	return total_size;
+}
+
 int v_send_ret_submit(struct vudc * sdev)
 {
-	spin_lock(&sdev->lock_tx);
+	unsigned long flags;
+	spin_lock_irqsave(&sdev->lock_tx, flags);
 
 	while(!list_empty(&sdev->priv_tx)) {
 		struct list_head *urbh = sdev->priv_tx.next;
 		struct urbp *urb_p = list_entry(urbh, struct urbp, urb_q);
 		list_del_init(urbh);
-		spin_unlock(&sdev->lock_tx);
+		spin_unlock_irqrestore(&sdev->lock_tx, flags);
 
 		send_respond(urb_p, sdev);
-		spin_lock(&sdev->lock_tx);
+		spin_lock_irqsave(&sdev->lock_tx, flags);
 	}
-	spin_unlock(&sdev->lock_tx);
+	spin_unlock_irqrestore(&sdev->lock_tx, flags);
 	return 0;
 }
 
@@ -974,7 +1069,8 @@ int stub_tx_loop(void *data)
 			break;
 		if (v_send_ret_submit(sdev) < 0)
 			break;
-		/* TODO - handle unlink */
+		if (v_send_ret_unlink(sdev) < 0)
+			break;
 
 		wait_event_interruptible(sdev->tx_waitq,
 						(!list_empty(&sdev->priv_tx) ||
