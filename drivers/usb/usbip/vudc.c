@@ -1217,20 +1217,40 @@ static int vep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 {
 	struct vep *ep;
 	struct vrequest *req;
+	struct vudc *sdev;
+	struct vrequest *lst;
+	unsigned long flags;
+	int retval = -EINVAL;
 
 	debug_print("[vudc] *** vep_dequeue ***\n");
 
 	if (!_ep || !_req)
-		return -EINVAL;
+		return retval;
 
 	ep = usb_ep_to_vep(_ep);
 	req = usb_request_to_vrequest(_req);
+	sdev = req->sdev;
 
-	/* TODO */
+	if (!sdev->driver)
+		return -ESHUTDOWN;
+
+	spin_lock_irqsave(&sdev->lock, flags);
+	list_for_each_entry(lst, &sdev->urb_q, queue) {
+		if (&lst->req == _req) {
+			list_del_init(&lst->queue);
+			_req->status = -ECONNRESET;
+			retval = 0;
+			break;
+		}
+	}
+	spin_unlock_irqrestore(&sdev->lock, flags);
+
+	if (retval == 0) {
+		usb_gadget_giveback_request(_ep, _req);
+	}
 
 	debug_print("[vudc] ### vep_dequeue ###\n");
-
-	return -EINVAL;
+	return retval;
 }
 
 static int
@@ -1415,12 +1435,7 @@ static void vudc_device_reset(struct usbip_device *ud)
 	spin_lock_irqsave(&sdev->lock, flags);
 	stop_activity(sdev);
 	spin_unlock_irqrestore(&sdev->lock, flags);
-	if (sdev->driver) {
-		if (sdev->driver->reset)
-			sdev->driver->reset(&sdev->gadget);
-		else
-			sdev->driver->disconnect(&sdev->gadget);
-	}
+	usb_gadget_udc_reset(&sdev->gadget, sdev->driver);
 	spin_lock_irq(&ud->lock);
 	ud->status = SDEV_ST_AVAILABLE;
 	spin_unlock_irq(&ud->lock);
