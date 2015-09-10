@@ -37,7 +37,7 @@
 		do { if (DEBUG) printk(KERN_ERR __VA_ARGS__); } while (0)
 
 static const char driver_desc[] = DRIVER_DESC;
-static const char gadget_name[] = "vudc";
+static const char gadget_name[] = "usbip-vudc";
 
 MODULE_DESCRIPTION(DRIVER_DESC);
 /* Add your names here */
