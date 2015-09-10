@@ -19,6 +19,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <linux/usb/ch9.h>
 
 #include <errno.h>
 #include <unistd.h>
@@ -35,144 +36,115 @@
 #undef  PROGNAME
 #define PROGNAME "libusbip"
 
-#define GADGET_DIR "/sys/kernel/config/usb_gadget/"
-
 struct usbip_device_driver *device_driver;
+struct udev *udev_context;
+
+#define copy_descr_attr16(dev, descr, attr)			\
+	do {							\
+		(dev)->attr = le16toh((descr)->attr);		\
+	} while (0)
+
+#define copy_descr_attr(dev, descr, attr)			\
+	do {							\
+		(dev)->attr = (descr)->attr;		\
+	} while (0)
+
+/* TODO - move to file common to host and device */
+static int32_t read_attr_usbip_status(struct usbip_usb_device *udev)
+{
+	char status_attr_path[SYSFS_PATH_MAX];
+	int fd;
+	int length;
+	char status;
+	int value = 0;
+
+	snprintf(status_attr_path, SYSFS_PATH_MAX, "%s/usbip_status",
+		 udev->path);
+
+	fd = open(status_attr_path, O_RDONLY);
+	if (fd < 0) {
+		err("error opening attribute %s", status_attr_path);
+		return -1;
+	}
+
+	length = read(fd, &status, 1);
+	if (length < 0) {
+		err("error reading attribute %s", status_attr_path);
+		close(fd);
+		return -1;
+	}
+
+	value = atoi(&status);
+
+	return value;
+}
+
+static
+int read_usb_vudc_device(struct udev_device *sdev, struct usbip_usb_device *dev)
+{
+	const char *path, *name;
+	char filepath[SYSFS_PATH_MAX];
+	struct usb_device_descriptor descr;
+	int ret = 0;
+	FILE *fd = NULL;
+
+	path = udev_device_get_syspath(sdev);
+	snprintf(filepath, SYSFS_PATH_MAX, "%s/%s", path, VUDC_DEVICE_DESCR_FILE);
+	fd = fopen(filepath, "r");
+	if (!fd)
+		return -1;
+	ret = fread((char *) &descr, sizeof(descr), 1, fd);
+	if (ret < 0)
+		return -1;
+	fclose(fd);
+
+	copy_descr_attr(dev, &descr, bDeviceClass);
+	copy_descr_attr(dev, &descr, bDeviceSubClass);
+	copy_descr_attr(dev, &descr, bDeviceProtocol);
+	copy_descr_attr(dev, &descr, bNumConfigurations);
+	copy_descr_attr16(dev, &descr, idVendor);
+	copy_descr_attr16(dev, &descr, idProduct);
+	copy_descr_attr16(dev, &descr, bcdDevice);
+
+	strncpy(dev->path, path, SYSFS_PATH_MAX);
+
+	/* FIXME - depends on speed of vudc, constify / export */
+	dev->speed = USB_SPEED_HIGH;
+
+	/* Only used for user output, little sense to output them in general */
+	dev->bNumInterfaces = 0;
+	dev->bConfigurationValue = 0;
+	dev->busnum = 0;
+
+	name = udev_device_get_sysname(sdev);
+	strncpy(dev->busid, name, SYSFS_BUS_ID_SIZE);
+	return 0;
+}
 
 static
 struct usbip_exported_device *usbip_exported_device_new(const char *path)
 {
-	FILE *fp;
-	DIR *dir;
-	struct dirent *ent;
-	char buf1[100], buf2[100];
-	unsigned int tmpNum;
-
 	struct usbip_exported_device *edev = NULL;
-	struct usbip_exported_device *edev_old;
-	size_t size;
-	int i;
 	int ret;
 	ret = 0;
 
 	edev = calloc(1, sizeof(struct usbip_exported_device));
 
-//	edev->sudev = udev_device_new_from_syspath(udev_context, sdevpath);
-//	if (!edev->sudev) {
-//		err("udev_device_new_from_syspath: %s", sdevpath);
-//		goto err;
-//	}
-	edev->sudev = NULL;
+	edev->sudev = udev_device_new_from_syspath(udev_context, path);
+	if (!edev->sudev) {
+		err("udev_device_new_from_syspath: %s", path);
+		goto err;
+	}
 
-	//read_usb_device(edev->sudev, &edev->udev);
-	if((dir = opendir(path)) != NULL) 
-	{
-		while((ent = readdir(dir)) != NULL) 
-		{
-			if(ent->d_name[0] != '.')
-			{
-				strcpy(buf1, path);
-				strcat(buf1, ent->d_name);
+	ret = read_usb_vudc_device(edev->sudev, &edev->udev);
+	if (ret)
+		goto err;
 
-				if(strcmp(ent->d_name, "idProduct") == 0)
-				{
-					fp = fopen(buf1, "r");
-					ret = fread(buf2, 100, 1, fp);
-					sscanf(buf2, "%x\n", &tmpNum);
-					edev->udev.idProduct = (uint16_t)tmpNum;
-					fclose(fp);
-					
-					printf("idProduct: %d\n", tmpNum);
-				}
-				else if(strcmp(ent->d_name, "idVendor") == 0)
-				{
-					fp = fopen(buf1, "r");
-					ret = fread(buf2, 100, 1, fp);
-					sscanf(buf2, "%x\n", &tmpNum);
-					edev->udev.idVendor = (uint16_t)tmpNum;
-					fclose(fp);
-					
-					printf("idVendor: %d\n", tmpNum);
-				}
-				else if(strcmp(ent->d_name, "bcdDevice") == 0)
-				{
-					fp = fopen(buf1, "r");
-					ret = fread(buf2, 100, 1, fp);
-					sscanf(buf2, "%x\n", &tmpNum);
-					edev->udev.bcdDevice = (uint16_t)tmpNum;
-					fclose(fp);
-					
-					printf("bcdDevice: %d\n", tmpNum);
-				}
-				else if(strcmp(ent->d_name, "bDeviceClass") == 0)
-				{
-					fp = fopen(buf1, "r");
-					ret = fread(buf2, 100, 1, fp);
-					sscanf(buf2, "%x\n", &tmpNum);
-					edev->udev.bDeviceClass = (uint16_t)tmpNum;
-					fclose(fp);
-					
-					printf("bDeviceClass: %d\n", tmpNum);
-				}
-				else if(strcmp(ent->d_name, "bDeviceProtocol") == 0)
-				{
-					fp = fopen(buf1, "r");
-					ret = fread(buf2, 100, 1, fp);
-					sscanf(buf2, "%x\n", &tmpNum);
-					edev->udev.bDeviceProtocol = (uint16_t)tmpNum;
-					fclose(fp);
-					
-					printf("bDeviceProtocol: %d\n", tmpNum);
-				}
-				else if(strcmp(ent->d_name, "bDeviceSubClass") == 0)
-				{
-					fp = fopen(buf1, "r");
-					ret = fread(buf2, 100, 1, fp);
-					sscanf(buf2, "%x\n", &tmpNum);
-					edev->udev.bDeviceSubClass = (uint16_t)tmpNum;
-					fclose(fp);
-					
-					printf("bDeviceSubClass: %d\n", tmpNum);
-				}
-			}
-			if (ret < 0)
-				goto err;
-			strncpy(edev->udev.path, path, SYSFS_PATH_MAX);
-			// todo
-			strncpy(edev->udev.busid, "g1", SYSFS_BUS_ID_SIZE);
-			edev->udev.busnum = 1;
-		}
-		closedir(dir);
-	} 
-	
-	// todo
-	edev->udev.bConfigurationValue = 1;
-	edev->udev.bNumConfigurations = 1;
-	edev->udev.bNumInterfaces = 1;
-	printf("Ustawiaw speed na USB_SPEED_HIGH\n");
-	edev->udev.speed = USB_SPEED_HIGH;
-
-	// todo
-	edev->status = 0;
+	edev->status = read_attr_usbip_status(&edev->udev);
 	if (edev->status < 0)
 		goto err;
 
-	/* reallocate buffer to include usb interface data */
-	size = sizeof(struct usbip_exported_device) +
-		edev->udev.bNumInterfaces * sizeof(struct usbip_usb_interface);
-
-	edev_old = edev;
-	edev = realloc(edev, size);
-	if (!edev) {
-		edev = edev_old;
-		dbg("realloc failed");
-		goto err;
-	}
-
-	for (i = 0; i < edev->udev.bNumInterfaces; i++)
-	{
-		//read_usb_interface(&edev->udev, i, &edev->uinf[i]);
-	}
+	/* FIXME - decide if we should fetch interfaces */
 
 	return edev;
 err:
@@ -186,33 +158,38 @@ err:
 
 static int refresh_exported_devices(void)
 {
-	DIR *dir;
-	struct dirent *ent;
-	char buf1[100], path[100];
 	struct usbip_exported_device *edev;
+	struct udev_enumerate *enumerate;
+	struct udev_list_entry *devices, *dev_list_entry;
+	struct udev_device *dev;
+	const char *path;
+	const char *driver;
 
-	strcpy(buf1, GADGET_DIR);
-	if((dir = opendir(buf1)) != NULL) 
-	{
-		while((ent = readdir(dir)) != NULL) 
-		{
-			if(ent->d_name[0] != '.')
-			{
-				strcpy(path, buf1);
-				strcat(path, ent->d_name);
-				strcat(path, "/");
-				edev = usbip_exported_device_new(path);
-				if (!edev) {
-					dbg("usbip_exported_device_new failed");
-					continue;
-				}
+	enumerate = udev_enumerate_new(udev_context);
+	udev_enumerate_add_match_subsystem(enumerate, "udc");
+	udev_enumerate_scan_devices(enumerate);
 
-				list_add(&edev->node, &device_driver->edev_list);
-				device_driver->ndevs++;
+	devices = udev_enumerate_get_list_entry(enumerate);
+
+	udev_list_entry_foreach(dev_list_entry, devices) {
+		path = udev_list_entry_get_name(dev_list_entry);
+		dev = udev_device_new_from_syspath(udev_context, path);
+		if (dev == NULL)
+			continue;
+
+		/* Check whether device uses usbip-vudc driver. */
+		driver = udev_device_get_driver(dev);
+		if (driver != NULL && !strcmp(driver, USBIP_DEVICE_DRV_NAME)) {
+			edev = usbip_exported_device_new(path);
+			if (!edev) {
+				dbg("usbip_exported_device_new failed");
+				continue;
 			}
+
+			list_add(&edev->node, &device_driver->edev_list);
+			host_driver->ndevs++;
 		}
-		closedir(dir);
-	} 
+	}
 
 	return 0;
 }
@@ -233,6 +210,12 @@ int usbip_device_driver_open(void)
 {
 	int rc;
 
+	udev_context = udev_new();
+	if (!udev_context) {
+		err("udev_new failed");
+		return -1;
+	}
+
 	device_driver = calloc(1, sizeof(*device_driver));
 
 	device_driver->ndevs = 0;
@@ -248,6 +231,8 @@ err_free_device_driver:
 	free(device_driver);
 	device_driver = NULL;
 
+	udev_unref(udev_context);
+
 	return -1;
 }
 
@@ -260,6 +245,8 @@ void usbip_device_driver_close(void)
 
 	free(device_driver);
 	device_driver = NULL;
+
+	udev_unref(udev_context);
 }
 
 int usbip_device_refresh_device_list(void)
@@ -278,35 +265,32 @@ int usbip_device_refresh_device_list(void)
 	return 0;
 }
 
-//TODO later
 int usbip_device_export_device(struct usbip_exported_device *edev, int sockfd)
 {
-	//char attr_name[] = "usbip_sockfd";
-	//char sockfd_attr_path[SYSFS_PATH_MAX];
-	char sockfd_attr_path[] = "/sys/devices/platform/vudc.0/vudc_sockfd";
+	char attr_name[] = "usbip_sockfd";
+	char sockfd_attr_path[SYSFS_PATH_MAX];
 	char sockfd_buff[30];
 	int ret;
 
-/* 	if (edev->status != SDEV_ST_AVAILABLE) {
- * 		dbg("device not available: %s", edev->udev.busid);
- * 		switch (edev->status) {
- * 		case SDEV_ST_ERROR:
- * 			dbg("status SDEV_ST_ERROR");
- * 			break;
- * 		case SDEV_ST_USED:
- * 			dbg("status SDEV_ST_USED");
- * 			break;
- * 		default:
- * 			dbg("status unknown: 0x%x", edev->status);
- * 		}
- * 		return -1;
- * 	}
- */
+	if (edev->status != SDEV_ST_AVAILABLE) {
+		dbg("device not available: %s", edev->udev.busid);
+		switch (edev->status) {
+		case SDEV_ST_ERROR:
+			dbg("status SDEV_ST_ERROR");
+			break;
+		case SDEV_ST_USED:
+			dbg("status SDEV_ST_USED");
+			break;
+		default:
+			dbg("status unknown: 0x%x", edev->status);
+		}
+		return -1;
+	}
+
 
 	/* only the first interface is true */
-/* 	snprintf(sockfd_attr_path, sizeof(sockfd_attr_path), "%s/%s",
- * 		 edev->udev.path, attr_name);
- */
+	snprintf(sockfd_attr_path, sizeof(sockfd_attr_path), "%s/%s",
+		 edev->udev.path, attr_name);
 
 	snprintf(sockfd_buff, sizeof(sockfd_buff), "%d\n", sockfd);
 

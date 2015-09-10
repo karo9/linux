@@ -32,6 +32,8 @@
 
 #include <dirent.h>
 
+#include <linux/usb/ch9.h>
+
 #include "usbip_common.h"
 #include "usbip_network.h"
 #include "usbip.h"
@@ -243,72 +245,78 @@ err_out:
 
 static int list_gadget_devices(bool parsable)
 {
-	FILE *fp;
-	DIR *dir, *dir2;
-	struct dirent *ent, *ent2;
-	char buf1[100], buf2[100], buf3[100];
-	char idProduct[20];
-	char idVendor[20];
-	int idVend;
+	int ret = -1;
+	struct udev *udev;
+	struct udev_enumerate *enumerate;
+	struct udev_list_entry *devices, *dev_list_entry;
+	struct udev_device *dev;
+	const char *path;
+	const char *driver;
+
+	const struct usb_device_descriptor *d_desc;
+	const char *descriptors;
 	char product_name[128];
-	int ret;
+
+	uint16_t idVendor;
+	char idVendor_buf[8];
+	uint16_t idProduct;
+	char idProduct_buf[8];
+	const char *busid;
+
+	udev = udev_new();
+	enumerate = udev_enumerate_new(udev);
+
+	udev_enumerate_add_match_subsystem(enumerate, "udc");
+
+	udev_enumerate_scan_devices(enumerate);
+	devices = udev_enumerate_get_list_entry(enumerate);
+
+	udev_list_entry_foreach(dev_list_entry, devices) {
+		path = udev_list_entry_get_name(dev_list_entry);
+		dev = udev_device_new_from_syspath(udev, path);
+
+		driver = udev_device_get_driver(dev);
+		/* We only have mechanism to enumerate gadgets bound to vudc */
+		if (driver == NULL || strcmp(driver, USBIP_DEVICE_DRV_NAME))
+			continue;
+
+		/* Get device information. */
+		descriptors = udev_device_get_sysattr_value(dev, "dev_descr");
+
+		if (!descriptors) {
+			err("problem getting device attributes: %s",
+			    strerror(errno));
+			goto err_out;
+		}
+
+		d_desc = (const struct usb_device_descriptor *) descriptors;
+
+		idVendor = le16toh(d_desc->idVendor);
+		sprintf(idVendor_buf, "0x%4x", idVendor);
+		idProduct = le16toh(d_desc->idProduct);
+		sprintf(idProduct_buf, "0x%4x", idVendor);
+		busid = udev_device_get_sysname(dev);
+
+		/* Get product name. */
+		usbip_names_get_product(product_name, sizeof(product_name),
+					le16toh(idVendor),
+					le16toh(idProduct));
+
+		/* Print information. */
+		print_device(busid, idVendor_buf, idProduct_buf, parsable);
+		print_product_name(product_name, parsable);
+
+		printf("\n");
+
+		udev_device_unref(dev);
+	}
 	ret = 0;
 
-	strcpy(buf1, GADGET_DIR);
-	if((dir = opendir(buf1)) != NULL) 
-	{
-		while((ent = readdir(dir)) != NULL) 
-		{
-			if(ent->d_name[0] != '.')
-			{
-				strcpy(buf2, buf1);
-				strcat(buf2, ent->d_name);
-				strcat(buf2, "/");
+err_out:
+	udev_enumerate_unref(enumerate);
+	udev_unref(udev);
 
-				if((dir2 = opendir(buf2)) != NULL) 
-				{
-					while((ent2 = readdir(dir2)) != NULL) 
-					if(ent2->d_name[0] != '.')
-					{
-						//printf("\'%s\'\n", ent2->d_name);
-						if(strcmp(ent2->d_name, "idProduct") == 0)
-						{
-							strcpy(buf3, buf2);
-							strcat(buf3, ent2->d_name);
-							fp = fopen(buf3, "r");
-							ret = fread(idProduct, 20, 1, fp);
-							//printf("idProduct: %s", idProduct);
-							fclose(fp);
-						}
-						else if(strcmp(ent2->d_name, "idVendor") == 0)
-						{
-							strcpy(buf3, buf2);
-							strcat(buf3, ent2->d_name);
-							fp = fopen(buf3, "r");
-							ret = fread(idVendor, 20, 1, fp);
-							sscanf(idVendor, "%x", &idVend);
-							idVendor[strlen(idVendor)-1] = '\0';
-							//printf("idVendor: %s \t %d \t %x\n", idVendor, idVend, idVend);
-							fclose(fp);
-						}
-					}
-				}
-				/* Get product name. */
-				usbip_names_get_product(product_name, sizeof(product_name),
-							strtol(idVendor, NULL, 16),
-							strtol(idProduct, NULL, 16));
-
-				print_device(ent->d_name, idVendor, idProduct, parsable);
-				print_product_name(product_name, parsable);
-				printf("\n");
-			}
-		}
-		closedir(dir);
-	} 
-	if (ret < 0)
-	 return -1;
-
-	return 0;
+	return ret;
 }
 
 int usbip_list(int argc, char *argv[])
