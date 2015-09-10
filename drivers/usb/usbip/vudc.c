@@ -230,22 +230,6 @@ static void free_urbp(struct urbp* urb_p)
 }
 
 /* sysfs files */
-static int sysfs_variable = 0;
-
-static ssize_t example_in_show(struct device *dev, struct device_attribute *attr,
-		     char *out)
-{
-	char *s = out;
-
-	debug_print("[vudc] *** example_in_show ***\n");
-
-	out += sprintf(out, "Hi, variable = %d\n", sysfs_variable);
-
-	debug_print("[vudc] ### example_in_show ###\n");
-
-	return out - s;
-}
-static DEVICE_ATTR_RO(example_in);
 
 static ssize_t fetch_descriptor(struct usb_ctrlrequest* req, struct vudc* udc,
 				char *out, ssize_t sz, ssize_t maxsz)
