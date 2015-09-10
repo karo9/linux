@@ -1163,7 +1163,7 @@ err:
 	spin_unlock_irq(&vudc->udev.lock);
 	return -EINVAL;
 }
-static DEVICE_ATTR(vudc_sockfd, S_IWUSR, NULL, store_sockfd);
+static DEVICE_ATTR(usbip_sockfd, S_IWUSR, NULL, store_sockfd);
 
 /* endpoint related operations */
 
@@ -1666,7 +1666,7 @@ static int vudc_probe(struct platform_device *pdev)
 
 	device_create_file(&pdev->dev, &dev_attr_usbip_status);
 	device_create_file(&pdev->dev, &dev_attr_dev_descr);
-	device_create_file(&pdev->dev, &dev_attr_vudc_sockfd);
+	device_create_file(&pdev->dev, &dev_attr_usbip_sockfd);
 
 	platform_set_drvdata(pdev, vudc);
 
@@ -1690,7 +1690,7 @@ static int vudc_remove(struct platform_device *pdev)
 
 	device_remove_file(&pdev->dev, &dev_attr_usbip_status);
 	device_remove_file(&pdev->dev, &dev_attr_dev_descr);
-	device_remove_file(&pdev->dev, &dev_attr_vudc_sockfd);
+	device_remove_file(&pdev->dev, &dev_attr_usbip_sockfd);
 
 	usb_del_gadget_udc(&vudc->gadget);
 	cleanup_vudc_hw(vudc);
