@@ -166,7 +166,7 @@ static int refresh_exported_devices(void)
 	const char *driver;
 
 	enumerate = udev_enumerate_new(udev_context);
-	udev_enumerate_add_match_subsystem(enumerate, "udc");
+	udev_enumerate_add_match_subsystem(enumerate, "platform");
 	udev_enumerate_scan_devices(enumerate);
 
 	devices = udev_enumerate_get_list_entry(enumerate);
@@ -187,7 +187,7 @@ static int refresh_exported_devices(void)
 			}
 
 			list_add(&edev->node, &device_driver->edev_list);
-			host_driver->ndevs++;
+			device_driver->ndevs++;
 		}
 	}
 
