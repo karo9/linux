@@ -231,6 +231,22 @@ static void free_urbp(struct urbp* urb_p)
 
 /* sysfs files */
 
+static ssize_t usbip_status_show(struct device *dev,
+			       struct device_attribute *attr, char *out)
+{
+	struct vudc *sdev = (struct vudc *) dev_get_drvdata(dev);
+	int status;
+	
+	if (!sdev)
+		return -ENODEV;
+	spin_lock_irq(&sdev->udev.lock);
+	status = sdev->udev.status;
+	spin_unlock_irq(&sdev->udev.lock);
+
+	return snprintf(out, PAGE_SIZE, "%d\n", status);
+}
+static DEVICE_ATTR_RO(usbip_status);
+
 static ssize_t fetch_descriptor(struct usb_ctrlrequest* req, struct vudc* udc,
 				char *out, ssize_t sz, ssize_t maxsz)
 {
@@ -1648,7 +1664,7 @@ static int vudc_probe(struct platform_device *pdev)
 	if (retval < 0)
 		goto err_add_udc;
 
-	device_create_file(&pdev->dev, &dev_attr_example_in);
+	device_create_file(&pdev->dev, &dev_attr_usbip_status);
 	device_create_file(&pdev->dev, &dev_attr_dev_descr);
 	device_create_file(&pdev->dev, &dev_attr_vudc_sockfd);
 
@@ -1672,7 +1688,7 @@ static int vudc_remove(struct platform_device *pdev)
 
 	debug_print("[vudc] *** vudc_remove ***\n");
 
-	device_remove_file(&pdev->dev, &dev_attr_example_in);
+	device_remove_file(&pdev->dev, &dev_attr_usbip_status);
 	device_remove_file(&pdev->dev, &dev_attr_dev_descr);
 	device_remove_file(&pdev->dev, &dev_attr_vudc_sockfd);
 
