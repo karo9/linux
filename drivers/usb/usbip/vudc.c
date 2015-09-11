@@ -236,7 +236,7 @@ static ssize_t usbip_status_show(struct device *dev,
 {
 	struct vudc *sdev = (struct vudc *) dev_get_drvdata(dev);
 	int status;
-	
+
 	if (!sdev)
 		return -ENODEV;
 	spin_lock_irq(&sdev->udev.lock);
@@ -470,14 +470,20 @@ top:
 			}
 
 		/* many requests terminate without a short packet */
+		/* also check if we need to send zlp */
 		} else {
-			if (req->req.length == req->req.actual
-					&& !req->req.zero)
-				req->req.status = 0;
-			if (urb->transfer_buffer_length == urb->actual_length
-					&& !(urb->transfer_flags
-						& URB_ZERO_PACKET))
-				urb->status = 0;
+			if (req->req.length == req->req.actual) {
+				if (req->req.zero && to_host)
+					rescan = 1;
+				else
+					req->req.status = 0;
+			}
+			if (urb->transfer_buffer_length == urb->actual_length) {
+				if (urb->transfer_flags & URB_ZERO_PACKET && !to_host)
+					rescan = 1;
+				else
+					urb->status = 0;
+			}
 		}
 
 		/* device side completion --> continuable */
@@ -820,6 +826,9 @@ static void v_timer(unsigned long _vudc)
 	list_for_each_entry_safe(urb_p, tmp, &sdev->urb_q, urb_q) {
 		struct urb *urb = urb_p->urb;
 		struct vep *ep = urb_p->ep;
+	if (urb->unlinked)
+		goto return_urb;
+
 	if (!ep) {
 		urb->status = -EPROTO;
 		goto return_urb;
