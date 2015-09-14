@@ -226,7 +226,17 @@ static struct urbp* alloc_urbp(void)
 
 static void free_urbp(struct urbp* urb_p)
 {
+	if (!urb_p)
+		return;
 	kfree(urb_p);
+}
+
+static void free_urbp_and_urb(struct urbp *urb_p)
+{
+	if (!urb_p)
+		return;
+	free_urb(urb_p->urb);
+	free_urbp(urb_p);
 }
 
 /* sysfs files */
@@ -390,7 +400,7 @@ static void stop_activity(struct vudc *sdev)
 
 	list_for_each_entry_safe(urb_p, tmp, &sdev->urb_q, urb_q) {
 		list_del(&urb_p->urb_q);
-		free_urbp(urb_p);
+		free_urbp_and_urb(urb_p);
 	}
 }
 
@@ -593,8 +603,7 @@ static void send_respond(struct urbp *urb_p, struct vudc *sdev)
 
 		kfree(iov);
 		kfree(iso_buffer);
-		free_urb(urb);
-		free_urbp(urb_p);
+		free_urbp_and_urb(urb_p);
 }
 
 /* some members of urb must be substituted before. */
@@ -798,6 +807,7 @@ static int handle_control_request(struct vudc *sdev, struct urb *urb,
 	return ret_val;
 }
 
+/* called with spinlocks held */
 static void v_enqueue_ret_unlink(struct vudc *sdev, __u32 seqnum,
 			     __u32 status)
 {
@@ -888,12 +898,15 @@ static void v_timer(unsigned long _vudc)
 			ep->already_seen = ep->setup_stage = 0;
 
 		spin_lock(&sdev->lock_tx);
-		if (!urb->unlinked)
+		if (!urb->unlinked) {
 			list_move_tail(&urb_p->urb_q, &sdev->priv_tx);
-		else
+		} else {
 			v_enqueue_ret_unlink(sdev, urb_p->seqnum, urb->unlinked);
-		spin_unlock(&sdev->lock_tx);
+			list_del(&urb_p->urb_q);
+			free_urbp_and_urb(urb_p);
+		}
 		wake_up(&sdev->tx_waitq);
+		spin_unlock(&sdev->lock_tx);
 	}
 	spin_unlock_irqrestore(&sdev->lock, flags);
 }
@@ -909,6 +922,7 @@ static void stub_recv_cmd_unlink(struct vudc *sdev,
 		if (urb_p->seqnum != pdu->u.cmd_unlink.seqnum)
 			continue;
 		urb_p->urb->unlinked = -ECONNRESET;
+		urb_p->seqnum = pdu->base.seqnum;
 		/* kick the timer */
 		mod_timer(&sdev->tr_timer, jiffies);
 		spin_unlock_irqrestore(&sdev->lock, flags);
@@ -917,6 +931,7 @@ static void stub_recv_cmd_unlink(struct vudc *sdev,
 	/* Not found, completed / not queued */
 	spin_lock(&sdev->lock_tx);
 	v_enqueue_ret_unlink(sdev, pdu->base.seqnum, 0);
+	wake_up(&sdev->tx_waitq);
 	spin_unlock(&sdev->lock_tx);
 	spin_unlock_irqrestore(&sdev->lock, flags);
 }
@@ -1048,6 +1063,7 @@ int v_send_ret_unlink(struct vudc * sdev)
 		int ret;
 		struct usbip_header pdu_header;
 		unlink = list_entry(sdev->unlink_tx.next, struct stub_unlink, list);
+		list_del_init(sdev->unlink_tx.next);
 		spin_unlock_irqrestore(&sdev->lock_tx, flags);
 
 		txsize = 0;
@@ -1071,6 +1087,7 @@ int v_send_ret_unlink(struct vudc * sdev)
 		}
 
 		total_size += txsize;
+		kfree(unlink);
 		spin_lock_irqsave(&sdev->lock_tx, flags);
 	}
 
@@ -1113,6 +1130,7 @@ int stub_tx_loop(void *data)
 
 		wait_event_interruptible(sdev->tx_waitq,
 						(!list_empty(&sdev->priv_tx) ||
+						!list_empty(&sdev->unlink_tx) ||
 						kthread_should_stop()));
 	}
 
