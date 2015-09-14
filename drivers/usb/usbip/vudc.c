@@ -404,6 +404,7 @@ top:
 	/* if there's no request queued, the device is NAKing; return */
 	list_for_each_entry(req, &ep->queue, queue) {
 		unsigned	host_len, dev_len, len;
+		unsigned	quot, rem;
 		void		*ubuf_pos, *rbuf_pos;
 		int		is_short, to_host;
 		int		rescan = 0;
@@ -425,12 +426,18 @@ top:
 		if (unlikely(len == 0))
 			is_short = 1;
 		else {
-			/* use an extra pass for the final short packet */
-			if (len > ep->ep.maxpacket) {
-				rescan = 1;
-				len -= (len % ep->ep.maxpacket);
+			/* send multiple of maxpacket first, then remainder */
+			rem = (len % ep->ep.maxpacket);
+			quot = len - rem;
+			if (quot > 0) {
+				is_short = 0;
+				len = quot;
+				if (rem > 0)
+					rescan = 1;
+			} else { /* rem > 0 */
+				is_short = 1;
+				len = rem;
 			}
-			is_short = (len % ep->ep.maxpacket) != 0;
 
 			ubuf_pos = urb->transfer_buffer + urb->actual_length;
 			rbuf_pos = req->req.buf + req->req.actual;
@@ -461,7 +468,7 @@ top:
 					urb->status = -EOVERFLOW;
 				else
 					urb->status = 0;
-			} else if (!to_host) {
+			} else {
 				urb->status = 0;
 				if (host_len > dev_len)
 					req->req.status = -EOVERFLOW;
