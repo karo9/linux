@@ -71,29 +71,25 @@ static const char *const ep_name[] = {
 };
 #define VIRTUAL_ENDPOINTS	ARRAY_SIZE(ep_name)
 
-/* container for usb_ep to store some endpoint related data */
 struct vep {
 	struct usb_ep ep;
 	unsigned type:2;
-	/* Add here some fields if needed */
 
 	const struct usb_endpoint_descriptor *desc;
 	struct usb_gadget *gadget;
-	struct list_head queue; // Request queue
+	struct list_head queue; /* Request queue */
 	unsigned halted:1;
 	unsigned wedged:1;
 	unsigned already_seen:1;
 	unsigned setup_stage:1;
 };
 
-/* container for usb_request to store some request related data */
 struct vrequest {
 	struct usb_request req;
-	/* Add here some fields if needed */
 
 	struct vudc *sdev;
 
-	struct list_head queue; // Request queue
+	struct list_head queue; /* Request queue */
 };
 
 struct urbp {
@@ -120,7 +116,6 @@ struct vudc {
 	struct usb_gadget gadget;
 	struct usb_gadget_driver *driver;
 	struct platform_device *dev;
-	/* Add here some fields if needed */
 
 	struct usb_device_descriptor *dev_descr;
 
@@ -134,13 +129,12 @@ struct vudc {
 	struct list_head priv_tx;
 	wait_queue_head_t tx_waitq;
 
-	spinlock_t lock; //Proctect data
-	struct vep ep[VIRTUAL_ENDPOINTS]; //VUDC enpoints
-	int address; //VUDC address
+	spinlock_t lock;
+	struct vep ep[VIRTUAL_ENDPOINTS];
+	int address;
 	u16 devstatus;
 };
 
-/* suitable transator forom usb structures to our private one */
 static inline struct vep *usb_ep_to_vep(struct usb_ep *_ep)
 {
 	return container_of(_ep, struct vep, ep);
@@ -185,8 +179,10 @@ static int alloc_urb_from_cmd(struct urb **urbp, struct usbip_header *pdu)
 	if(!urb->setup_packet)
 		goto free_buffer;
 
-	/* FIXME - we only setup pipe enough for usbip functions
-	 * to behave nicely */
+	/* 
+	 * FIXME - we only setup pipe enough for usbip functions
+	 * to behave nicely
+	 */
 	if (pdu->base.direction == USBIP_DIR_IN)
 		urb->pipe |= USB_DIR_IN;
 	else
@@ -285,7 +281,7 @@ static ssize_t fetch_descriptor(struct usb_ctrlrequest* req, struct vudc* udc,
 		goto exit;
 	}
 
-	/* FIXME: assuming request queue is empty; request is now on top */
+	/* assuming request queue is empty; request is now on top */
 	usb_req = list_entry(ep0->queue.prev, struct vrequest, queue);
 	list_del(&(usb_req->queue));
 
@@ -347,38 +343,10 @@ static int descriptor_cache(struct vudc *sdev)
 	}
 	sz += ret;
 
-#if 0
-	sz = 0;
-	req.bRequestType = USB_DIR_IN | USB_TYPE_STANDARD | USB_RECIP_DEVICE;
-	req.bRequest = USB_REQ_GET_DESCRIPTOR;
-	req.wValue = cpu_to_le16(USB_DT_CONFIG << 8);
-	req.wIndex = cpu_to_le16(0);
-	req.wLength = cpu_to_le16(max_sz - sz);
-
-	for (i = 0; i < dev_desc->bNumConfigurations ; i++) {
-		req.wValue = cpu_to_le16((USB_DT_CONFIG << 8) | i);
-		ret = fetch_descriptor(&req, sdev, intf_d + sz,
-				       sizeof(struct usb_config_descriptor),
-				       max_sz - sz);
-		if (ret < 0)
-			goto err_intf;
-		ret = extract_intfs(intf_d + sz, ret);
-		if (ret < 0)
-			goto err_intf;
-	}
-#endif
 	return 0;
-#if 0
-err_intf:
-	debug_print("[vudc] Could not fetch interface descriptor!\n");
-	return -1;
-#endif
 }
 
-
-/* ************************************************************************************************************ */
-
-/*utilities ; alomst verbatim from dummy_hcd.c */
+/* utilities ; alomst verbatim from dummy_hcd.c */
 
 /* called with spinlock held */
 static void nuke(struct vudc *sdev, struct vep *ep)
@@ -431,7 +399,8 @@ top:
 		int		is_short, to_host;
 		int		rescan = 0;
 
-		/* 1..N packets of ep->ep.maxpacket each ... the last one
+		/* 
+		 * 1..N packets of ep->ep.maxpacket each ... the last one
 		 * may be short (including zero length).
 		 *
 		 * writer can send a zlp explicitly (length 0) or implicitly
@@ -473,7 +442,8 @@ top:
 			req->req.actual += len;
 		}
 
-		/* short packets terminate, maybe with overflow/underflow.
+		/* 
+		 * short packets terminate, maybe with overflow/underflow.
 		 * it's only really an error to write too much.
 		 *
 		 * partially filling a buffer optionally blocks queue advances
@@ -517,8 +487,6 @@ top:
 
 		/* device side completion --> continuable */
 		if (req->req.status != -EINPROGRESS) {
-
-	    //printk(KERN_ERR "transfer - device side completion\n");
 
 			list_del_init(&req->queue);
 			spin_unlock(&sdev->lock);
@@ -569,23 +537,17 @@ int usbip_recv_xbuff(struct usbip_device *ud, struct urb *urb)
 	int ret;
 	int size;
 
-
-	printk(KERN_ERR "[xbuff] uno");
 	if (urb->pipe & USB_DIR_IN)
 		return 0;
 
 	size = urb->transfer_buffer_length;
-
-	printk(KERN_ERR "[xbuff] dos");
 	/* no need to recv xbuff */
-	if (!(size > 0))
+	if (size == 0)
 		return 0;
 
-	printk(KERN_ERR "Odbieram dodatkowy transfer_buffer - po stronie vudc");
 	ret = usbip_recv(ud->tcp_socket, urb->transfer_buffer, size);
 	if (ret != size)
-			return -EPIPE;
-
+		return -EPIPE;
 	return ret;
 }
 
@@ -594,10 +556,7 @@ static struct vep *find_endpoint(struct vudc *vudc, u8 address)
 	int i;
 
 	if ((address & ~USB_DIR_IN) == 0)
-	{
-		printk(KERN_ERR "[find_endpoint] Zwracam 0");
 		return &vudc->ep[0];
-	}
 
 	for (i = 1; i < VIRTUAL_ENDPOINTS; i++) {
 		struct vep *ep = &vudc->ep[i];
@@ -605,10 +564,7 @@ static struct vep *find_endpoint(struct vudc *vudc, u8 address)
 		if (!ep->desc)
 			continue;
 		if (ep->desc->bEndpointAddress == address)
-		{
-			printk(KERN_ERR "[find_endpoint] Zwracam %d", i);
 			return ep;
-		}
 	}
 	return NULL;
 }
@@ -620,7 +576,7 @@ static struct vep *find_endpoint(struct vudc *vudc, u8 address)
 #define Ep_Request	(USB_TYPE_STANDARD | USB_RECIP_ENDPOINT)
 #define Ep_InRequest	(Ep_Request | USB_DIR_IN)
 
-/**
+/*
  * handle_control_request() - handles all control transfers
  * @sdev: pointer to vudc
  * @urb: the urb request to handle
@@ -667,12 +623,6 @@ static int handle_control_request(struct vudc *sdev, struct urb *urb,
 				break;
 			case USB_DEVICE_A_ALT_HNP_SUPPORT:
 				sdev->gadget.a_alt_hnp_support = 1;
-				break;
-			//TODO - usb 3.0 support
-			case USB_DEVICE_U1_ENABLE:
-			case USB_DEVICE_U2_ENABLE:
-			case USB_DEVICE_LTM_ENABLE:
-				ret_val = -EOPNOTSUPP;
 				break;
 			default:
 				ret_val = -EOPNOTSUPP;
@@ -865,7 +815,6 @@ static void v_timer(unsigned long _vudc)
 		}
 	}
 
-		printk(KERN_ERR "Przed make transfer\n");
 		transfer(sdev, urb, ep);
 
 		/* FIXME - what does dummy_hcd actually do here? */
@@ -873,7 +822,6 @@ static void v_timer(unsigned long _vudc)
 			continue;
 
 	return_urb:
-		printk(KERN_ERR "Przed respond\n");
 		if (ep)
 			ep->already_seen = ep->setup_stage = 0;
 
@@ -952,15 +900,11 @@ static void stub_recv_cmd_submit(struct vudc *sdev,
 	usbip_dump_header(pdu);
 	usbip_dump_urb(urb_p->urb);
 
-	printk(KERN_ERR "Przed setup\n");
-
 	spin_lock_irqsave(&sdev->lock, flags);
 	if (!timer_pending(&sdev->tr_timer))
 		mod_timer(&sdev->tr_timer, jiffies + 1);
 	list_add_tail(&urb_p->urb_q, &sdev->urb_q);
 	spin_unlock_irqrestore(&sdev->lock, flags);
-
-	usbip_dbg_stub_rx("Leave\n");
 }
 
 static void stub_rx_pdu(struct usbip_device *ud)
@@ -968,8 +912,6 @@ static void stub_rx_pdu(struct usbip_device *ud)
 	int ret;
 	struct usbip_header pdu;
 	struct vudc *sdev = container_of(ud, struct vudc, udev);
-
-	usbip_dbg_stub_rx("Enter\n");
 
 	memset(&pdu, 0, sizeof(pdu));
 	ret = usbip_recv(ud->tcp_socket, &pdu, sizeof(pdu));
@@ -997,8 +939,7 @@ static void stub_rx_pdu(struct usbip_device *ud)
 		break;
 
 	default:
-		printk(KERN_ERR "UNKOWN PDU\n");
-		//dev_err(dev, "unknown pdu\n");
+		/* TODO - err message */
 		break;
 	}
 	return;
@@ -1016,15 +957,6 @@ int stub_rx_loop(void *data)
 
 	return 0;
 }
-
-
-
-
-
-
-
-
-/* ************************************************************************************************************ */
 
 static int v_send_ret_unlink(struct vudc * sdev, struct stub_unlink *unlink)
 {
@@ -1154,20 +1086,15 @@ int stub_tx_loop(void *data)
 	struct usbip_device * udev = (struct usbip_device *) data;
 	struct vudc * sdev = container_of(udev, struct vudc, udev);
 
-	debug_print("[vudc] *** stub_tx_loop ***\n");
-
 	while (!kthread_should_stop()) {
 		if (usbip_event_happened(&sdev->udev))
 			break;
 		if (v_send_ret(sdev) < 0)
 			break;
-
 		wait_event_interruptible(sdev->tx_waitq,
 						(!list_empty(&sdev->priv_tx) ||
 						kthread_should_stop()));
 	}
-
-	debug_print("[vudc] ### stub_tx_loop ###\n");
 
 	return 0;
 }
@@ -1180,8 +1107,6 @@ static ssize_t store_sockfd(struct device *dev, struct device_attribute *attr,
 	struct vudc *vudc;
 	int err;
 	struct socket *socket;
-
-	debug_print("[vudc] *** example_out ***\n");
 
 	vudc = (struct vudc*)dev_get_drvdata(dev);
 	if (!vudc || !vudc->driver) /* Don't export what we don't have */
@@ -1245,8 +1170,6 @@ static int vep_enable(struct usb_ep *_ep,
 	int retval;
 	unsigned maxp;
 
-	debug_print("[vudc] *** enable ***\n");
-
 	ep = usb_ep_to_vep(_ep);
 	if (!_ep || !desc || ep->desc || _ep->name == ep0name
 			|| desc->bDescriptorType != USB_DT_ENDPOINT)
@@ -1303,8 +1226,6 @@ static int vep_disable(struct usb_ep *_ep)
 	struct vudc *sdev;
 	unsigned long flags;
 
-	debug_print("[vudc] *** disable ***\n");
-
 	ep = usb_ep_to_vep(_ep);
 	if (!_ep || !ep->desc || _ep->name == ep0name)
 		return -EINVAL;
@@ -1315,7 +1236,6 @@ static int vep_disable(struct usb_ep *_ep)
 	nuke(sdev, ep);
 	spin_unlock_irqrestore(&sdev->lock, flags);
 
-	debug_print("[vudc] ### disable ###\n");
 	return 0;
 }
 
@@ -1325,8 +1245,6 @@ static struct usb_request *vep_alloc_request(struct usb_ep *_ep,
 	struct vep *ep;
 	struct vrequest *req;
 
-	debug_print("[vudc] *** vep_alloc_request ***\n");
-
 	if (!_ep)
 		return NULL;
 	ep = usb_ep_to_vep(_ep);
@@ -1335,11 +1253,7 @@ static struct usb_request *vep_alloc_request(struct usb_ep *_ep,
 	if (!req)
 		return NULL;
 
-	/* Do some additional request initialization here */
-
 	INIT_LIST_HEAD(&req->queue);
-
-	debug_print("[vudc] ### vep_alloc_request ###\n");
 
 	return &req->req;
 }
@@ -1348,20 +1262,12 @@ static void vep_free_request(struct usb_ep *_ep, struct usb_request *_req)
 {
 	struct vrequest *req;
 
-	debug_print("[vudc] *** vep_free_request ***\n");
-
 	if (!_ep || !_req) {
 		WARN_ON(1);
 		return;
 	}
-
 	req = usb_request_to_vrequest(_req);
-
-	/* Do some cleanup here if desired*/
-
 	kfree(req);
-
-	debug_print("[vudc] ### vep_free_request ###\n");
 }
 
 static int vep_queue(struct usb_ep *_ep, struct usb_request *_req,
@@ -1371,9 +1277,6 @@ static int vep_queue(struct usb_ep *_ep, struct usb_request *_req,
 	struct vrequest *req;
 	struct vudc *vudc;
 	unsigned long flags;
-
-	debug_print("[vudc] *** vep_queue ***\n");
-	debug_print("[vudc] Endpoint name: %s\n", _ep->name);
 
 	if (!_ep || !_req)
 		return -EINVAL;
@@ -1385,21 +1288,11 @@ static int vep_queue(struct usb_ep *_ep, struct usb_request *_req,
 	_req->actual = 0;
 	_req->status = -EINPROGRESS;
 
-	debug_print("[vudc] actual length: %d length: %d\n", _req->actual, _req->length);
-	print_hex_dump(KERN_DEBUG, "vep_queue", DUMP_PREFIX_OFFSET, 16, 4, _req->buf, _req->length, false);
-
-	/* TODO */
 	spin_lock_irqsave(&vudc->lock, flags);
-
 	list_add_tail(&req->queue, &ep->queue);
-
 	spin_unlock_irqrestore(&vudc->lock, flags);
 
-	debug_print("[vudc] ### vep_queue ###\n");
-
-	//return -EINVAL;
 	return 0;
-
 }
 
 static int vep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
@@ -1410,8 +1303,6 @@ static int vep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 	struct vrequest *lst;
 	unsigned long flags;
 	int retval = -EINVAL;
-
-	debug_print("[vudc] *** vep_dequeue ***\n");
 
 	if (!_ep || !_req)
 		return retval;
@@ -1434,11 +1325,9 @@ static int vep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 	}
 	spin_unlock_irqrestore(&sdev->lock, flags);
 
-	if (retval == 0) {
+	if (retval == 0)
 		usb_gadget_giveback_request(_ep, _req);
-	}
 
-	debug_print("[vudc] ### vep_dequeue ###\n");
 	return retval;
 }
 
@@ -1471,16 +1360,12 @@ vep_set_halt_and_wedge(struct usb_ep *_ep, int value, int wedged)
 static int
 vep_set_halt(struct usb_ep *_ep, int value)
 {
-	debug_print("[vudc] *** vep_set_halt ***\n");
 	return vep_set_halt_and_wedge(_ep, value, 0);
-	debug_print("[vudc] ### vep_set_halt ###\n");
 }
 
 static int vep_set_wedge(struct usb_ep *_ep)
 {
-	debug_print("[vudc] *** vep_set_wedge ***\n");
 	return vep_set_halt_and_wedge(_ep, 1, 1);
-	debug_print("[vudc] ### vep_set_wedge ###\n");
 }
 
 static const struct usb_ep_ops vep_ops = {
@@ -1505,14 +1390,12 @@ static int vgadget_get_frame(struct usb_gadget *_gadget)
 	struct timeval now;
 	struct vudc *sdev;
 
-	debug_print("[vudc] *** vgadget_get_frame ***\n");
 	sdev = usb_gadget_to_vudc(_gadget);
 	do_gettimeofday(&now);
 
 	return ((now.tv_sec - sdev->start_time.tv_sec) * 1000 +
 			(now.tv_usec - sdev->start_time.tv_usec) / 1000)
 			% 0x7FF;
-	debug_print("[vudc] ### vgadget_get_frame ###\n");
 }
 
 static int vgadget_set_selfpowered(struct usb_gadget *_gadget, int value)
@@ -1530,10 +1413,9 @@ static int vgadget_set_selfpowered(struct usb_gadget *_gadget, int value)
 static int vgadget_pullup(struct usb_gadget *_gadget, int value)
 {
 	struct vudc *vudc = usb_gadget_to_vudc(_gadget);
-	debug_print("[vudc] *** vgadget_pullup ***\n");
 
 	if (value && vudc->driver) {
-		//vudc->gadget.speed = vudc->driver->max_speed;
+		/* TODO - setup proper speed */
 		vudc->gadget.speed = USB_SPEED_HIGH;
 
 		if(vudc->gadget.speed == USB_SPEED_SUPER)
@@ -1541,8 +1423,6 @@ static int vgadget_pullup(struct usb_gadget *_gadget, int value)
 		else
 			vudc->ep[0].ep.maxpacket = 64;
 	}
-	/* TODO */
-	debug_print("[vudc] ### vgadget_pullup ###\n");
 	return 0;
 }
 
@@ -1553,8 +1433,6 @@ static int vgadget_udc_start(struct usb_gadget *g,
 	unsigned long flags;
 	int ret;
 
-	debug_print("[vudc] *** vgadget_udc_start ***\n");
-
 	spin_lock_irqsave(&vudc->lock, flags);
 	vudc->driver = driver;
 	spin_unlock_irqrestore(&vudc->lock, flags);
@@ -1563,9 +1441,6 @@ static int vgadget_udc_start(struct usb_gadget *g,
 		/* FIXME: add correct event */
 		usbip_event_add(&vudc->udev, SDEV_EVENT_ERROR_MALLOC);
 	}
-
-	/* TODO */
-	debug_print("[vudc] ### vgadget_udc_start ###\n");
 	return 0;
 }
 
@@ -1574,7 +1449,6 @@ static int vgadget_udc_stop(struct usb_gadget *g)
 	struct vudc *vudc = usb_gadget_to_vudc(g);
 	unsigned long flags;
 
-	debug_print("[vudc] *** vgadget_udc_stop ***\n");
 	usbip_event_add(&vudc->udev, SDEV_EVENT_REMOVED);
 	usbip_stop_eh(&vudc->udev); /* Wait for eh completion */
 	usbip_start_eh(&vudc->udev);
@@ -1582,8 +1456,6 @@ static int vgadget_udc_stop(struct usb_gadget *g)
 	spin_lock_irqsave(&vudc->lock, flags);
 	vudc->driver = NULL;
 	spin_unlock_irqrestore(&vudc->lock, flags);
-	/* TODO */
-	debug_print("[vudc] ### vgadget_udc_stop ###\n");
 	return 0;
 }
 
@@ -1650,8 +1522,6 @@ static int init_vudc_hw(struct vudc *vudc)
 	int i;
 	struct usbip_device *udev = &vudc->udev;
 
-	debug_print("[vudc] *** init_vudc_hw ***\n");
-
 	INIT_LIST_HEAD(&vudc->gadget.ep_list);
 	for(i = 0; i < VIRTUAL_ENDPOINTS; ++i) {
 		struct vep *ep = &vudc->ep[i];
@@ -1695,29 +1565,20 @@ static int init_vudc_hw(struct vudc *vudc)
 	list_del_init(&vudc->ep[0].ep.ep_list);
 
 	setup_timer(&vudc->tr_timer, v_timer, (unsigned long) vudc);
-	/* TODO */
-	debug_print("[vudc] ### init_vudc_hw ###\n");
 	return 0;
 }
 
 static void cleanup_vudc_hw(struct vudc *vudc)
 {
-	debug_print("[vudc] *** cleanup_vudc_hw ***\n");
-
 	kfree(vudc->dev_descr);
 	usbip_event_add(&vudc->udev, SDEV_EVENT_REMOVED);
 	usbip_stop_eh(&vudc->udev);
-
-	debug_print("[vudc] ### cleanup_vudc_hw ###\n");
-	return;
 }
 
 static int vudc_probe(struct platform_device *pdev)
 {
 	struct vudc *vudc;
 	int retval = -ENOMEM;
-
-	debug_print("[vudc] *** vudc_probe ***\n");
 
 	vudc = kzalloc(sizeof(*vudc), GFP_KERNEL);
 	if (!vudc)
@@ -1742,8 +1603,6 @@ static int vudc_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, vudc);
 
-	debug_print("[vudc] ### vudc_probe ###\n");
-
 	return retval;
 
 err_add_udc:
@@ -1758,8 +1617,6 @@ static int vudc_remove(struct platform_device *pdev)
 {
 	struct vudc *vudc = platform_get_drvdata(pdev);
 
-	debug_print("[vudc] *** vudc_remove ***\n");
-
 	device_remove_file(&pdev->dev, &dev_attr_usbip_status);
 	device_remove_file(&pdev->dev, &dev_attr_dev_descr);
 	device_remove_file(&pdev->dev, &dev_attr_usbip_sockfd);
@@ -1767,9 +1624,6 @@ static int vudc_remove(struct platform_device *pdev)
 	usb_del_gadget_udc(&vudc->gadget);
 	cleanup_vudc_hw(vudc);
 	kfree(vudc);
-
-	debug_print("[vudc] ### vudc_remove ###\n");
-
 	return 0;
 }
 
@@ -1805,8 +1659,6 @@ static struct vudc_device *alloc_vudc_device(
 {
 	struct vudc_device *udc_dev = NULL;
 
-	debug_print("[vudc] *** alloc_vudc_device ***\n");
-
 	udc_dev = kzalloc(sizeof(*udc_dev), GFP_KERNEL);
 	if (!udc_dev)
 		goto out;
@@ -1820,18 +1672,13 @@ static struct vudc_device *alloc_vudc_device(
 	}
 
 out:
-	debug_print("[vudc] ### alloc_vudc_device ###\n");
 	return udc_dev;
 }
 
 static void put_vudc_device(struct vudc_device *udc_dev)
 {
-	debug_print("[vudc] *** put_vudc_device ***\n");
-
 	platform_device_put(udc_dev->dev);
 	kfree(udc_dev);
-
-	debug_print("[vudc] ### put_vudc_device ###\n");
 }
 
 static struct list_head vudc_devices = LIST_HEAD_INIT(vudc_devices);
@@ -1841,8 +1688,6 @@ static int __init init(void)
 	int retval = -ENOMEM;
 	int i;
 	struct vudc_device *udc_dev = NULL, *udc_dev2 = NULL;
-
-	debug_print("[vudc] *** init ***\n");
 
 	if (usb_disabled())
 		return -ENODEV;
@@ -1890,9 +1735,6 @@ static int __init init(void)
 			goto err_probe_udc;
 		}
 	}
-
-	debug_print("[vudc] ### init ###\n");
-
 	return retval;
 
 err_probe_udc:
@@ -1917,15 +1759,12 @@ static void __exit cleanup(void)
 {
 	struct vudc_device *udc_dev = NULL, *udc_dev2 = NULL;
 
-	debug_print("[vudc] *** cleanup ***\n");
-
 	list_for_each_entry_safe(udc_dev, udc_dev2, &vudc_devices, list) {
 		list_del(&udc_dev->list);
 		platform_device_unregister(udc_dev->dev);
 		put_vudc_device(udc_dev);
 	}
 	platform_driver_unregister(&vudc_driver);
-	debug_print("[vudc] ### cleanup ###\n");
 }
 module_exit(cleanup);
 
