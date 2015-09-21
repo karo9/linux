@@ -1517,9 +1517,13 @@ static int vgadget_get_frame(struct usb_gadget *_gadget)
 
 static int vgadget_set_selfpowered(struct usb_gadget *_gadget, int value)
 {
-	debug_print("[vudc] *** vgadget_set_selfpowered ***\n");
-	/* TODO */
-	debug_print("[vudc] ### vgadget_set_selfpowered ###\n");
+	struct vudc *sdev;
+
+	sdev = usb_gadget_to_vudc(_gadget);
+	if (value)
+		sdev->devstatus |= (1 << USB_DEVICE_SELF_POWERED);
+	else
+		sdev->devstatus &= ~(1 << USB_DEVICE_SELF_POWERED);
 	return 0;
 }
 
