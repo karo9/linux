@@ -126,6 +126,7 @@ struct vudc {
 
 	struct usbip_device udev;
 	struct timer_list tr_timer;
+	struct timeval start_time;
 
 	struct list_head urb_q;
 
@@ -1214,6 +1215,9 @@ static ssize_t store_sockfd(struct device *dev, struct device_attribute *attr,
 		vudc->udev.status = SDEV_ST_USED;
 		spin_unlock_irq(&vudc->udev.lock);
 
+		spin_lock_irq(&vudc->lock);
+		do_gettimeofday(&vudc->start_time);
+		spin_unlock_irq(&vudc->lock);
 	} else {
 		spin_lock_irq(&vudc->udev.lock);
 		if (vudc->udev.status != SDEV_ST_USED)
@@ -1495,12 +1499,20 @@ static const struct usb_ep_ops vep_ops = {
 
 /* gadget related functions */
 
+/* FIXME - this will probably misbehave when suspend/resume is added */
 static int vgadget_get_frame(struct usb_gadget *_gadget)
 {
+	struct timeval now;
+	struct vudc *sdev;
+
 	debug_print("[vudc] *** vgadget_get_frame ***\n");
-	/* TODO */
+	sdev = usb_gadget_to_vudc(_gadget);
+	do_gettimeofday(&now);
+
+	return ((now.tv_sec - sdev->start_time.tv_sec) * 1000 +
+			(now.tv_usec - sdev->start_time.tv_usec) / 1000)
+			% 0x7FF;
 	debug_print("[vudc] ### vgadget_get_frame ###\n");
-	return 0;
 }
 
 static int vgadget_wakeup(struct usb_gadget *_gadget)
