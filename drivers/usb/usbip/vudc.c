@@ -1515,14 +1515,6 @@ static int vgadget_get_frame(struct usb_gadget *_gadget)
 	debug_print("[vudc] ### vgadget_get_frame ###\n");
 }
 
-static int vgadget_wakeup(struct usb_gadget *_gadget)
-{
-	debug_print("[vudc] *** vgadget_wakeup ***\n");
-	/* TODO */
-	debug_print("[vudc] ### vgadget_wakeup ###\n");
-	return 0;
-}
-
 static int vgadget_set_selfpowered(struct usb_gadget *_gadget, int value)
 {
 	debug_print("[vudc] *** vgadget_set_selfpowered ***\n");
@@ -1593,7 +1585,6 @@ static int vgadget_udc_stop(struct usb_gadget *g)
 
 static const struct usb_gadget_ops vgadget_ops = {
 	.get_frame	= vgadget_get_frame,
-	.wakeup		= vgadget_wakeup,
 	.set_selfpowered = vgadget_set_selfpowered,
 	.pullup		= vgadget_pullup,
 	.udc_start	= vgadget_udc_start,
@@ -1780,18 +1771,14 @@ static int vudc_remove(struct platform_device *pdev)
 
 static int vudc_suspend(struct platform_device *pdev, pm_message_t state)
 {
-	debug_print("[vudc] *** vudc_suspend ***\n");
 	/* TODO - not yet implemented in USB/IP */
-	debug_print("[vudc] ### vudc_suspend ###\n");
-	return 0;
+	return -ENOSYS;
 }
 
 static int vudc_resume(struct platform_device *pdev)
 {
-	debug_print("[vudc] *** vudc_resume ***\n");
 	/* TODO - not yet implemented in USB/IP */
-	debug_print("[vudc] ### vudc_resume ###\n");
-	return 0;
+	return -ENOSYS;
 }
 
 static struct platform_driver vudc_driver = {
