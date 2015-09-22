@@ -26,12 +26,11 @@
 #include "stub.h"
 #include "vudc.h"
 
-#define DRIVER_DESC "USB over IP UDC"
-#define DRIVER_VERSION "06 March 2015"
-
 #define DEBUG 1
 #define debug_print(...) \
 		do { if (DEBUG) printk(KERN_ERR __VA_ARGS__); } while (0)
+
+/* String constants and ep names */
 
 static const char gadget_name[] = "usbip-vudc";
 
@@ -49,6 +48,9 @@ const char *const ep_name[] = {
 	"ep10out", "ep11out", "ep12in", "ep13out", "ep14in", "ep15out",
 };
 #define VIRTUAL_ENDPOINTS	ARRAY_SIZE(ep_name)
+
+
+/* urb-related structures alloc / free */
 
 int alloc_urb_from_cmd(struct urb **urbp, struct usbip_header *pdu)
 {
@@ -72,7 +74,7 @@ int alloc_urb_from_cmd(struct urb **urbp, struct usbip_header *pdu)
 	if(!urb->setup_packet)
 		goto free_buffer;
 
-	/* 
+	/*
 	 * FIXME - we only setup pipe enough for usbip functions
 	 * to behave nicely
 	 */
@@ -92,7 +94,6 @@ free_urb:
 err:
 	return -ENOMEM;
 }
-
 
 static void free_urb(struct urb *urb)
 {
@@ -140,7 +141,8 @@ void free_urbp_and_urb(struct urbp *urb_p)
 	free_urbp(urb_p);
 }
 
-/* utilities ; alomst verbatim from dummy_hcd.c */
+
+/* utilities ; almost verbatim from dummy_hcd.c */
 
 /* called with spinlock held */
 static void nuke(struct vudc *sdev, struct vep *ep)
@@ -178,130 +180,6 @@ static void stop_activity(struct vudc *sdev)
 	}
 }
 
-/* Adapted from dummy_hcd.c ; caller must hold lock */
-static void transfer(struct vudc* sdev,
-		struct urb *urb, struct vep *ep)
-{
-	struct vrequest	*req;
-
-top:
-	/* if there's no request queued, the device is NAKing; return */
-	list_for_each_entry(req, &ep->queue, queue) {
-		unsigned	host_len, dev_len, len;
-		unsigned	quot, rem;
-		void		*ubuf_pos, *rbuf_pos;
-		int		is_short, to_host;
-		int		rescan = 0;
-
-		/* 
-		 * 1..N packets of ep->ep.maxpacket each ... the last one
-		 * may be short (including zero length).
-		 *
-		 * writer can send a zlp explicitly (length 0) or implicitly
-		 * (length mod maxpacket zero, and 'zero' flag); they always
-		 * terminate reads.
-		 */
-		host_len = urb->transfer_buffer_length - urb->actual_length;
-		dev_len = req->req.length - req->req.actual;
-		len = min(host_len, dev_len);
-
-		/* FIXME update emulated data toggle too */
-
-		to_host = usb_pipein(urb->pipe);
-		if (unlikely(len == 0))
-			is_short = 1;
-		else {
-			/* send multiple of maxpacket first, then remainder */
-			rem = (len % ep->ep.maxpacket);
-			quot = len - rem;
-			if (quot > 0) {
-				is_short = 0;
-				len = quot;
-				if (rem > 0)
-					rescan = 1;
-			} else { /* rem > 0 */
-				is_short = 1;
-				len = rem;
-			}
-
-			ubuf_pos = urb->transfer_buffer + urb->actual_length;
-			rbuf_pos = req->req.buf + req->req.actual;
-
-			if(urb->pipe & USB_DIR_IN)
-				memcpy(ubuf_pos, rbuf_pos, len);
-			else
-				memcpy(rbuf_pos, ubuf_pos, len);
-
-			urb->actual_length += len;
-			req->req.actual += len;
-		}
-
-		/* 
-		 * short packets terminate, maybe with overflow/underflow.
-		 * it's only really an error to write too much.
-		 *
-		 * partially filling a buffer optionally blocks queue advances
-		 * (so completion handlers can clean up the queue) but we don't
-		 * need to emulate such data-in-flight.
-		 */
-		if (is_short) {
-			if (host_len == dev_len) {
-				req->req.status = 0;
-				urb->status = 0;
-			} else if (to_host) {
-				req->req.status = 0;
-				if (dev_len > host_len)
-					urb->status = -EOVERFLOW;
-				else
-					urb->status = 0;
-			} else {
-				urb->status = 0;
-				if (host_len > dev_len)
-					req->req.status = -EOVERFLOW;
-				else
-					req->req.status = 0;
-			}
-
-		/* many requests terminate without a short packet */
-		/* also check if we need to send zlp */
-		} else {
-			if (req->req.length == req->req.actual) {
-				if (req->req.zero && to_host)
-					rescan = 1;
-				else
-					req->req.status = 0;
-			}
-			if (urb->transfer_buffer_length == urb->actual_length) {
-				if (urb->transfer_flags & URB_ZERO_PACKET && !to_host)
-					rescan = 1;
-				else
-					urb->status = 0;
-			}
-		}
-
-		/* device side completion --> continuable */
-		if (req->req.status != -EINPROGRESS) {
-
-			list_del_init(&req->queue);
-			spin_unlock(&sdev->lock);
-			usb_gadget_giveback_request(&ep->ep, &req->req);
-			spin_lock(&sdev->lock);
-
-			/* requests might have been unlinked... */
-			rescan = 1;
-		}
-
-		/* host side completion --> terminate */
-		if (urb->status != -EINPROGRESS)
-			break;
-
-		/* rescan to continue with any other queued i/o */
-		if (rescan)
-			goto top;
-	}
-}
-
-
 struct vep *find_endpoint(struct vudc *vudc, u8 address)
 {
 	int i;
@@ -320,237 +198,93 @@ struct vep *find_endpoint(struct vudc *vudc, u8 address)
 	return NULL;
 }
 
-#define Dev_Request	(USB_TYPE_STANDARD | USB_RECIP_DEVICE)
-#define Dev_InRequest	(Dev_Request | USB_DIR_IN)
-#define Intf_Request	(USB_TYPE_STANDARD | USB_RECIP_INTERFACE)
-#define Intf_InRequest	(Intf_Request | USB_DIR_IN)
-#define Ep_Request	(USB_TYPE_STANDARD | USB_RECIP_ENDPOINT)
-#define Ep_InRequest	(Ep_Request | USB_DIR_IN)
+/* gadget ops */
 
-/*
- * handle_control_request() - handles all control transfers
- * @sdev: pointer to vudc
- * @urb: the urb request to handle
- * @setup: pointer to the setup data for a USB device control
- *	 request
- * @status: pointer to request handling status
- *
- * Return 0 - if the request was handled
- *	  1 - if the request wasn't handles
- *	  error code on error
- *
- * Adapted from drivers/usb/gadget/udc/dummy_hcd.c
- */
-static int handle_control_request(struct vudc *sdev, struct urb *urb,
-				  struct usb_ctrlrequest *setup,
-				  int *status)
+/* FIXME - this will probably misbehave when suspend/resume is added */
+static int vgadget_get_frame(struct usb_gadget *_gadget)
 {
-	struct vep		*ep2;
-	int			ret_val = 1;
-	unsigned	w_index;
-	unsigned	w_value;
+	struct timeval now;
+	struct vudc *sdev;
 
-	w_index = le16_to_cpu(setup->wIndex);
-	w_value = le16_to_cpu(setup->wValue);
-	switch (setup->bRequest) {
-	case USB_REQ_SET_ADDRESS:
-		if (setup->bRequestType != Dev_Request)
-			break;
-		sdev->address = w_value;
-		ret_val = 0;
-		*status = 0;
-		break;
-	case USB_REQ_SET_FEATURE:
-		if (setup->bRequestType == Dev_Request) {
-			ret_val = 0;
-			switch (w_value) {
-			case USB_DEVICE_REMOTE_WAKEUP:
-				break;
-			case USB_DEVICE_B_HNP_ENABLE:
-				sdev->gadget.b_hnp_enable = 1;
-				break;
-			case USB_DEVICE_A_HNP_SUPPORT:
-				sdev->gadget.a_hnp_support = 1;
-				break;
-			case USB_DEVICE_A_ALT_HNP_SUPPORT:
-				sdev->gadget.a_alt_hnp_support = 1;
-				break;
-			default:
-				ret_val = -EOPNOTSUPP;
-			}
-			if (ret_val == 0) {
-				sdev->devstatus |= (1 << w_value);
-				*status = 0;
-			}
-		} else if (setup->bRequestType == Ep_Request) {
-			/* endpoint halt */
-			ep2 = find_endpoint(sdev, w_index);
-			if (!ep2 || ep2->ep.name == ep0name) {
-				ret_val = -EOPNOTSUPP;
-				break;
-			}
-			ep2->halted = 1;
-			ret_val = 0;
-			*status = 0;
-		}
-		break;
-	case USB_REQ_CLEAR_FEATURE:
-		if (setup->bRequestType == Dev_Request) {
-			ret_val = 0;
-			switch (w_value) {
-			case USB_DEVICE_REMOTE_WAKEUP:
-				w_value = USB_DEVICE_REMOTE_WAKEUP;
-				break;
+	sdev = usb_gadget_to_vudc(_gadget);
+	do_gettimeofday(&now);
 
-			case USB_DEVICE_U1_ENABLE:
-			case USB_DEVICE_U2_ENABLE:
-			case USB_DEVICE_LTM_ENABLE:
-				ret_val = -EOPNOTSUPP;
-				break;
-			default:
-				ret_val = -EOPNOTSUPP;
-				break;
-			}
-			if (ret_val == 0) {
-				sdev->devstatus &= ~(1 << w_value);
-				*status = 0;
-			}
-		} else if (setup->bRequestType == Ep_Request) {
-			/* endpoint halt */
-			ep2 = find_endpoint(sdev, w_index);
-			if (!ep2) {
-				ret_val = -EOPNOTSUPP;
-				break;
-			}
-			if (!ep2->wedged)
-				ep2->halted = 0;
-			ret_val = 0;
-			*status = 0;
-		}
-		break;
-	case USB_REQ_GET_STATUS:
-		if (setup->bRequestType == Dev_InRequest
-				|| setup->bRequestType == Intf_InRequest
-				|| setup->bRequestType == Ep_InRequest) {
-			char *buf;
-			/*
-			 * device: remote wakeup, selfpowered
-			 * interface: nothing
-			 * endpoint: halt
-			 */
-			buf = (char *)urb->transfer_buffer;
-			if (urb->transfer_buffer_length > 0) {
-				if (setup->bRequestType == Ep_InRequest) {
-					ep2 = find_endpoint(sdev, w_index);
-					if (!ep2) {
-						ret_val = -EOPNOTSUPP;
-						break;
-					}
-					buf[0] = ep2->halted;
-				} else if (setup->bRequestType ==
-					   Dev_InRequest) {
-					buf[0] = (u8)sdev->devstatus;
-				} else
-					buf[0] = 0;
-			}
-			if (urb->transfer_buffer_length > 1)
-				buf[1] = 0;
-			urb->actual_length = min_t(u32, 2,
-				urb->transfer_buffer_length);
-			ret_val = 0;
-			*status = 0;
-		}
-		break;
-	}
-	return ret_val;
+	return ((now.tv_sec - sdev->start_time.tv_sec) * 1000 +
+			(now.tv_usec - sdev->start_time.tv_usec) / 1000)
+			% 0x7FF;
 }
 
-
-static void v_timer(unsigned long _vudc)
+static int vgadget_set_selfpowered(struct usb_gadget *_gadget, int value)
 {
-	struct vudc *sdev = (struct vudc *) _vudc;
-	struct urbp *urb_p, *tmp;
+	struct vudc *sdev;
+
+	sdev = usb_gadget_to_vudc(_gadget);
+	if (value)
+		sdev->devstatus |= (1 << USB_DEVICE_SELF_POWERED);
+	else
+		sdev->devstatus &= ~(1 << USB_DEVICE_SELF_POWERED);
+	return 0;
+}
+
+static int vgadget_pullup(struct usb_gadget *_gadget, int value)
+{
+	struct vudc *vudc = usb_gadget_to_vudc(_gadget);
+
+	if (value && vudc->driver) {
+		/* TODO - setup proper speed */
+		vudc->gadget.speed = USB_SPEED_HIGH;
+
+		if(vudc->gadget.speed == USB_SPEED_SUPER)
+			vudc->ep[0].ep.maxpacket = 9;
+		else
+			vudc->ep[0].ep.maxpacket = 64;
+	}
+	return 0;
+}
+
+static int vgadget_udc_start(struct usb_gadget *g,
+		struct usb_gadget_driver *driver)
+{
+	struct vudc *vudc = usb_gadget_to_vudc(g);
 	unsigned long flags;
-	int i, ret = 0;
+	int ret;
 
-	spin_lock_irqsave(&sdev->lock, flags);
-
-	for (i = 0; i < VIRTUAL_ENDPOINTS; i++) {
-		if (!ep_name[i])
-			break;
-		sdev->ep[i].already_seen = 0;
+	spin_lock_irqsave(&vudc->lock, flags);
+	vudc->driver = driver;
+	spin_unlock_irqrestore(&vudc->lock, flags);
+	ret = descriptor_cache(vudc);
+	if (ret) {
+		/* FIXME: add correct event */
+		usbip_event_add(&vudc->udev, SDEV_EVENT_ERROR_MALLOC);
 	}
-
-	list_for_each_entry_safe(urb_p, tmp, &sdev->urb_q, urb_q) {
-		struct urb *urb = urb_p->urb;
-		struct vep *ep = urb_p->ep;
-	if (urb->unlinked)
-		goto return_urb;
-
-	if (!ep) {
-		urb->status = -EPROTO;
-		goto return_urb;
-	}
-
-	if (ep->already_seen)
-		continue;
-	ep->already_seen = 1;
-	if (ep == &sdev->ep[0] && urb_p->new) {
-		ep->setup_stage = 1;
-		urb_p->new = 0;
-	}
-	if (ep->halted && !ep->setup_stage) {
-		urb->status = -EPIPE;
-		goto return_urb;
-	}
-
-	if (ep == &sdev->ep[0] && ep->setup_stage) {
-		/* TODO - flush any stale requests */
-		ep->setup_stage = 0;
-		ep->halted = 0;
-
-		ret = handle_control_request(sdev, urb,
-			(struct usb_ctrlrequest *) urb->setup_packet, (&urb->status));
-		if (ret > 0) {
-			spin_unlock(&sdev->lock);
-			ret = sdev->driver->setup(&sdev->gadget,
-				(struct usb_ctrlrequest *) urb->setup_packet);
-			spin_lock(&sdev->lock);
-		}
-		if (ret >= 0) {
-			/* TODO - when different types are coded in, treat like bulk */
-		} else {
-			urb->status = -EPIPE;
-			urb->actual_length = 0;
-			goto return_urb;
-		}
-	}
-
-		transfer(sdev, urb, ep);
-
-		/* FIXME - what does dummy_hcd actually do here? */
-		if (urb->status == -EINPROGRESS)
-			continue;
-
-	return_urb:
-		if (ep)
-			ep->already_seen = ep->setup_stage = 0;
-
-		spin_lock(&sdev->lock_tx);
-		list_del(&urb_p->urb_q);
-		if (!urb->unlinked) {
-			v_enqueue_ret_submit(sdev, urb_p);
-		} else {
-			v_enqueue_ret_unlink(sdev, urb_p->seqnum, urb->unlinked);
-			free_urbp_and_urb(urb_p);
-		}
-		wake_up(&sdev->tx_waitq);
-		spin_unlock(&sdev->lock_tx);
-	}
-	spin_unlock_irqrestore(&sdev->lock, flags);
+	return 0;
 }
 
-/* endpoint related operations */
+static int vgadget_udc_stop(struct usb_gadget *g)
+{
+	struct vudc *vudc = usb_gadget_to_vudc(g);
+	unsigned long flags;
+
+	usbip_event_add(&vudc->udev, SDEV_EVENT_REMOVED);
+	usbip_stop_eh(&vudc->udev); /* Wait for eh completion */
+	usbip_start_eh(&vudc->udev);
+
+	spin_lock_irqsave(&vudc->lock, flags);
+	vudc->driver = NULL;
+	spin_unlock_irqrestore(&vudc->lock, flags);
+	return 0;
+}
+
+const struct usb_gadget_ops vgadget_ops = {
+	.get_frame	= vgadget_get_frame,
+	.set_selfpowered = vgadget_set_selfpowered,
+	.pullup		= vgadget_pullup,
+	.udc_start	= vgadget_udc_start,
+	.udc_stop	= vgadget_udc_stop,
+};
+
+
+/* endpoint ops */
 
 static int vep_enable(struct usb_ep *_ep,
 		const struct usb_endpoint_descriptor *desc)
@@ -746,7 +480,6 @@ vep_set_halt_and_wedge(struct usb_ep *_ep, int value, int wedged)
 	return 0;
 }
 
-
 static int
 vep_set_halt(struct usb_ep *_ep, int value)
 {
@@ -758,7 +491,7 @@ static int vep_set_wedge(struct usb_ep *_ep)
 	return vep_set_halt_and_wedge(_ep, 1, 1);
 }
 
-static const struct usb_ep_ops vep_ops = {
+const struct usb_ep_ops vep_ops = {
 	.enable		= vep_enable,
 	.disable	= vep_disable,
 
@@ -772,90 +505,8 @@ static const struct usb_ep_ops vep_ops = {
 	.set_wedge	= vep_set_wedge,
 };
 
-/* gadget related functions */
 
-/* FIXME - this will probably misbehave when suspend/resume is added */
-static int vgadget_get_frame(struct usb_gadget *_gadget)
-{
-	struct timeval now;
-	struct vudc *sdev;
-
-	sdev = usb_gadget_to_vudc(_gadget);
-	do_gettimeofday(&now);
-
-	return ((now.tv_sec - sdev->start_time.tv_sec) * 1000 +
-			(now.tv_usec - sdev->start_time.tv_usec) / 1000)
-			% 0x7FF;
-}
-
-static int vgadget_set_selfpowered(struct usb_gadget *_gadget, int value)
-{
-	struct vudc *sdev;
-
-	sdev = usb_gadget_to_vudc(_gadget);
-	if (value)
-		sdev->devstatus |= (1 << USB_DEVICE_SELF_POWERED);
-	else
-		sdev->devstatus &= ~(1 << USB_DEVICE_SELF_POWERED);
-	return 0;
-}
-
-static int vgadget_pullup(struct usb_gadget *_gadget, int value)
-{
-	struct vudc *vudc = usb_gadget_to_vudc(_gadget);
-
-	if (value && vudc->driver) {
-		/* TODO - setup proper speed */
-		vudc->gadget.speed = USB_SPEED_HIGH;
-
-		if(vudc->gadget.speed == USB_SPEED_SUPER)
-			vudc->ep[0].ep.maxpacket = 9;
-		else
-			vudc->ep[0].ep.maxpacket = 64;
-	}
-	return 0;
-}
-
-static int vgadget_udc_start(struct usb_gadget *g,
-		struct usb_gadget_driver *driver)
-{
-	struct vudc *vudc = usb_gadget_to_vudc(g);
-	unsigned long flags;
-	int ret;
-
-	spin_lock_irqsave(&vudc->lock, flags);
-	vudc->driver = driver;
-	spin_unlock_irqrestore(&vudc->lock, flags);
-	ret = descriptor_cache(vudc);
-	if (ret) {
-		/* FIXME: add correct event */
-		usbip_event_add(&vudc->udev, SDEV_EVENT_ERROR_MALLOC);
-	}
-	return 0;
-}
-
-static int vgadget_udc_stop(struct usb_gadget *g)
-{
-	struct vudc *vudc = usb_gadget_to_vudc(g);
-	unsigned long flags;
-
-	usbip_event_add(&vudc->udev, SDEV_EVENT_REMOVED);
-	usbip_stop_eh(&vudc->udev); /* Wait for eh completion */
-	usbip_start_eh(&vudc->udev);
-
-	spin_lock_irqsave(&vudc->lock, flags);
-	vudc->driver = NULL;
-	spin_unlock_irqrestore(&vudc->lock, flags);
-	return 0;
-}
-
-static const struct usb_gadget_ops vgadget_ops = {
-	.get_frame	= vgadget_get_frame,
-	.set_selfpowered = vgadget_set_selfpowered,
-	.pullup		= vgadget_pullup,
-	.udc_start	= vgadget_udc_start,
-	.udc_stop	= vgadget_udc_stop,
-};
+/* shutdown / reset / error handlers */
 
 static void vudc_shutdown(struct usbip_device *ud)
 {
@@ -905,6 +556,389 @@ static void vudc_device_unusable(struct usbip_device *ud)
 	spin_lock_irq(&ud->lock);
 	ud->status = SDEV_ST_ERROR;
 	spin_unlock_irq(&ud->lock);
+}
+
+
+/* transfer handling / emulation */
+
+#define Dev_Request	(USB_TYPE_STANDARD | USB_RECIP_DEVICE)
+#define Dev_InRequest	(Dev_Request | USB_DIR_IN)
+#define Intf_Request	(USB_TYPE_STANDARD | USB_RECIP_INTERFACE)
+#define Intf_InRequest	(Intf_Request | USB_DIR_IN)
+#define Ep_Request	(USB_TYPE_STANDARD | USB_RECIP_ENDPOINT)
+#define Ep_InRequest	(Ep_Request | USB_DIR_IN)
+
+/*
+ * handle_control_request() - handles all control transfers
+ * @sdev: pointer to vudc
+ * @urb: the urb request to handle
+ * @setup: pointer to the setup data for a USB device control
+ *	 request
+ * @status: pointer to request handling status
+ *
+ * Return 0 - if the request was handled
+ *	  1 - if the request wasn't handles
+ *	  error code on error
+ *
+ * Adapted from drivers/usb/gadget/udc/dummy_hcd.c
+ */
+static int handle_control_request(struct vudc *sdev, struct urb *urb,
+				  struct usb_ctrlrequest *setup,
+				  int *status)
+{
+	struct vep		*ep2;
+	int			ret_val = 1;
+	unsigned	w_index;
+	unsigned	w_value;
+
+	w_index = le16_to_cpu(setup->wIndex);
+	w_value = le16_to_cpu(setup->wValue);
+	switch (setup->bRequest) {
+	case USB_REQ_SET_ADDRESS:
+		if (setup->bRequestType != Dev_Request)
+			break;
+		sdev->address = w_value;
+		ret_val = 0;
+		*status = 0;
+		break;
+	case USB_REQ_SET_FEATURE:
+		if (setup->bRequestType == Dev_Request) {
+			ret_val = 0;
+			switch (w_value) {
+			case USB_DEVICE_REMOTE_WAKEUP:
+				break;
+			case USB_DEVICE_B_HNP_ENABLE:
+				sdev->gadget.b_hnp_enable = 1;
+				break;
+			case USB_DEVICE_A_HNP_SUPPORT:
+				sdev->gadget.a_hnp_support = 1;
+				break;
+			case USB_DEVICE_A_ALT_HNP_SUPPORT:
+				sdev->gadget.a_alt_hnp_support = 1;
+				break;
+			default:
+				ret_val = -EOPNOTSUPP;
+			}
+			if (ret_val == 0) {
+				sdev->devstatus |= (1 << w_value);
+				*status = 0;
+			}
+		} else if (setup->bRequestType == Ep_Request) {
+			/* endpoint halt */
+			ep2 = find_endpoint(sdev, w_index);
+			if (!ep2 || ep2->ep.name == ep0name) {
+				ret_val = -EOPNOTSUPP;
+				break;
+			}
+			ep2->halted = 1;
+			ret_val = 0;
+			*status = 0;
+		}
+		break;
+	case USB_REQ_CLEAR_FEATURE:
+		if (setup->bRequestType == Dev_Request) {
+			ret_val = 0;
+			switch (w_value) {
+			case USB_DEVICE_REMOTE_WAKEUP:
+				w_value = USB_DEVICE_REMOTE_WAKEUP;
+				break;
+
+			case USB_DEVICE_U1_ENABLE:
+			case USB_DEVICE_U2_ENABLE:
+			case USB_DEVICE_LTM_ENABLE:
+				ret_val = -EOPNOTSUPP;
+				break;
+			default:
+				ret_val = -EOPNOTSUPP;
+				break;
+			}
+			if (ret_val == 0) {
+				sdev->devstatus &= ~(1 << w_value);
+				*status = 0;
+			}
+		} else if (setup->bRequestType == Ep_Request) {
+			/* endpoint halt */
+			ep2 = find_endpoint(sdev, w_index);
+			if (!ep2) {
+				ret_val = -EOPNOTSUPP;
+				break;
+			}
+			if (!ep2->wedged)
+				ep2->halted = 0;
+			ret_val = 0;
+			*status = 0;
+		}
+		break;
+	case USB_REQ_GET_STATUS:
+		if (setup->bRequestType == Dev_InRequest
+				|| setup->bRequestType == Intf_InRequest
+				|| setup->bRequestType == Ep_InRequest) {
+			char *buf;
+			/*
+			 * device: remote wakeup, selfpowered
+			 * interface: nothing
+			 * endpoint: halt
+			 */
+			buf = (char *)urb->transfer_buffer;
+			if (urb->transfer_buffer_length > 0) {
+				if (setup->bRequestType == Ep_InRequest) {
+					ep2 = find_endpoint(sdev, w_index);
+					if (!ep2) {
+						ret_val = -EOPNOTSUPP;
+						break;
+					}
+					buf[0] = ep2->halted;
+				} else if (setup->bRequestType ==
+					   Dev_InRequest) {
+					buf[0] = (u8)sdev->devstatus;
+				} else
+					buf[0] = 0;
+			}
+			if (urb->transfer_buffer_length > 1)
+				buf[1] = 0;
+			urb->actual_length = min_t(u32, 2,
+				urb->transfer_buffer_length);
+			ret_val = 0;
+			*status = 0;
+		}
+		break;
+	}
+	return ret_val;
+}
+
+/* Adapted from dummy_hcd.c ; caller must hold lock */
+static void transfer(struct vudc* sdev,
+		struct urb *urb, struct vep *ep)
+{
+	struct vrequest	*req;
+
+top:
+	/* if there's no request queued, the device is NAKing; return */
+	list_for_each_entry(req, &ep->queue, queue) {
+		unsigned	host_len, dev_len, len;
+		unsigned	quot, rem;
+		void		*ubuf_pos, *rbuf_pos;
+		int		is_short, to_host;
+		int		rescan = 0;
+
+		/*
+		 * 1..N packets of ep->ep.maxpacket each ... the last one
+		 * may be short (including zero length).
+		 *
+		 * writer can send a zlp explicitly (length 0) or implicitly
+		 * (length mod maxpacket zero, and 'zero' flag); they always
+		 * terminate reads.
+		 */
+		host_len = urb->transfer_buffer_length - urb->actual_length;
+		dev_len = req->req.length - req->req.actual;
+		len = min(host_len, dev_len);
+
+		/* FIXME update emulated data toggle too */
+
+		to_host = usb_pipein(urb->pipe);
+		if (unlikely(len == 0))
+			is_short = 1;
+		else {
+			/* send multiple of maxpacket first, then remainder */
+			rem = (len % ep->ep.maxpacket);
+			quot = len - rem;
+			if (quot > 0) {
+				is_short = 0;
+				len = quot;
+				if (rem > 0)
+					rescan = 1;
+			} else { /* rem > 0 */
+				is_short = 1;
+				len = rem;
+			}
+
+			ubuf_pos = urb->transfer_buffer + urb->actual_length;
+			rbuf_pos = req->req.buf + req->req.actual;
+
+			if(urb->pipe & USB_DIR_IN)
+				memcpy(ubuf_pos, rbuf_pos, len);
+			else
+				memcpy(rbuf_pos, ubuf_pos, len);
+
+			urb->actual_length += len;
+			req->req.actual += len;
+		}
+
+		/*
+		 * short packets terminate, maybe with overflow/underflow.
+		 * it's only really an error to write too much.
+		 *
+		 * partially filling a buffer optionally blocks queue advances
+		 * (so completion handlers can clean up the queue) but we don't
+		 * need to emulate such data-in-flight.
+		 */
+		if (is_short) {
+			if (host_len == dev_len) {
+				req->req.status = 0;
+				urb->status = 0;
+			} else if (to_host) {
+				req->req.status = 0;
+				if (dev_len > host_len)
+					urb->status = -EOVERFLOW;
+				else
+					urb->status = 0;
+			} else {
+				urb->status = 0;
+				if (host_len > dev_len)
+					req->req.status = -EOVERFLOW;
+				else
+					req->req.status = 0;
+			}
+
+		/* many requests terminate without a short packet */
+		/* also check if we need to send zlp */
+		} else {
+			if (req->req.length == req->req.actual) {
+				if (req->req.zero && to_host)
+					rescan = 1;
+				else
+					req->req.status = 0;
+			}
+			if (urb->transfer_buffer_length == urb->actual_length) {
+				if (urb->transfer_flags & URB_ZERO_PACKET && !to_host)
+					rescan = 1;
+				else
+					urb->status = 0;
+			}
+		}
+
+		/* device side completion --> continuable */
+		if (req->req.status != -EINPROGRESS) {
+
+			list_del_init(&req->queue);
+			spin_unlock(&sdev->lock);
+			usb_gadget_giveback_request(&ep->ep, &req->req);
+			spin_lock(&sdev->lock);
+
+			/* requests might have been unlinked... */
+			rescan = 1;
+		}
+
+		/* host side completion --> terminate */
+		if (urb->status != -EINPROGRESS)
+			break;
+
+		/* rescan to continue with any other queued i/o */
+		if (rescan)
+			goto top;
+	}
+}
+
+static void v_timer(unsigned long _vudc)
+{
+	struct vudc *sdev = (struct vudc *) _vudc;
+	struct urbp *urb_p, *tmp;
+	unsigned long flags;
+	int i, ret = 0;
+
+	spin_lock_irqsave(&sdev->lock, flags);
+
+	for (i = 0; i < VIRTUAL_ENDPOINTS; i++) {
+		if (!ep_name[i])
+			break;
+		sdev->ep[i].already_seen = 0;
+	}
+
+	list_for_each_entry_safe(urb_p, tmp, &sdev->urb_q, urb_q) {
+		struct urb *urb = urb_p->urb;
+		struct vep *ep = urb_p->ep;
+	if (urb->unlinked)
+		goto return_urb;
+
+	if (!ep) {
+		urb->status = -EPROTO;
+		goto return_urb;
+	}
+
+	if (ep->already_seen)
+		continue;
+	ep->already_seen = 1;
+	if (ep == &sdev->ep[0] && urb_p->new) {
+		ep->setup_stage = 1;
+		urb_p->new = 0;
+	}
+	if (ep->halted && !ep->setup_stage) {
+		urb->status = -EPIPE;
+		goto return_urb;
+	}
+
+	if (ep == &sdev->ep[0] && ep->setup_stage) {
+		/* TODO - flush any stale requests */
+		ep->setup_stage = 0;
+		ep->halted = 0;
+
+		ret = handle_control_request(sdev, urb,
+			(struct usb_ctrlrequest *) urb->setup_packet, (&urb->status));
+		if (ret > 0) {
+			spin_unlock(&sdev->lock);
+			ret = sdev->driver->setup(&sdev->gadget,
+				(struct usb_ctrlrequest *) urb->setup_packet);
+			spin_lock(&sdev->lock);
+		}
+		if (ret >= 0) {
+			/* TODO - when different types are coded in, treat like bulk */
+		} else {
+			urb->status = -EPIPE;
+			urb->actual_length = 0;
+			goto return_urb;
+		}
+	}
+
+		transfer(sdev, urb, ep);
+
+		/* FIXME - what does dummy_hcd actually do here? */
+		if (urb->status == -EINPROGRESS)
+			continue;
+
+	return_urb:
+		if (ep)
+			ep->already_seen = ep->setup_stage = 0;
+
+		spin_lock(&sdev->lock_tx);
+		list_del(&urb_p->urb_q);
+		if (!urb->unlinked) {
+			v_enqueue_ret_submit(sdev, urb_p);
+		} else {
+			v_enqueue_ret_unlink(sdev, urb_p->seqnum, urb->unlinked);
+			free_urbp_and_urb(urb_p);
+		}
+		wake_up(&sdev->tx_waitq);
+		spin_unlock(&sdev->lock_tx);
+	}
+	spin_unlock_irqrestore(&sdev->lock, flags);
+}
+
+/* device setup / cleanup */
+
+struct vudc_device *alloc_vudc_device(int devid)
+{
+	struct vudc_device *udc_dev = NULL;
+
+	udc_dev = kzalloc(sizeof(*udc_dev), GFP_KERNEL);
+	if (!udc_dev)
+		goto out;
+
+	INIT_LIST_HEAD(&udc_dev->list);
+
+	udc_dev->dev = platform_device_alloc(gadget_name, devid);
+	if (!udc_dev->dev) {
+		kfree(udc_dev);
+		udc_dev = NULL;
+	}
+
+out:
+	return udc_dev;
+}
+
+void put_vudc_device(struct vudc_device *udc_dev)
+{
+	platform_device_put(udc_dev->dev);
+	kfree(udc_dev);
 }
 
 static int init_vudc_hw(struct vudc *vudc)
@@ -974,6 +1008,8 @@ static void cleanup_vudc_hw(struct vudc *vudc)
 	kfree(vudc->dev_descr);
 	kfree(vudc->ep);
 }
+
+/* platform driver ops */
 
 static int vudc_probe(struct platform_device *pdev)
 {
@@ -1047,29 +1083,3 @@ struct platform_driver vudc_driver = {
 		.name	= gadget_name,
 	},
 };
-
-struct vudc_device *alloc_vudc_device(int devid)
-{
-	struct vudc_device *udc_dev = NULL;
-
-	udc_dev = kzalloc(sizeof(*udc_dev), GFP_KERNEL);
-	if (!udc_dev)
-		goto out;
-
-	INIT_LIST_HEAD(&udc_dev->list);
-
-	udc_dev->dev = platform_device_alloc(gadget_name, devid);
-	if (!udc_dev->dev) {
-		kfree(udc_dev);
-		udc_dev = NULL;
-	}
-
-out:
-	return udc_dev;
-}
-
-void put_vudc_device(struct vudc_device *udc_dev)
-{
-	platform_device_put(udc_dev->dev);
-	kfree(udc_dev);
-}

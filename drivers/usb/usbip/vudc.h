@@ -26,7 +26,10 @@
 
 extern const char *const ep_name[];
 extern struct list_head vudc_devices;
+
 extern struct platform_driver vudc_driver;
+extern const struct usb_ep_ops vep_ops;
+extern const struct usb_gadget_ops vgadget_ops;
 
 struct vep {
 	struct usb_ep ep;
