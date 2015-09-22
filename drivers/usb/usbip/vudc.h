@@ -19,6 +19,7 @@
 #include <linux/time.h>
 #include <linux/sysfs.h>
 
+#include "usbip_common.h"
 #include "stub.h"
 
 
@@ -115,5 +116,13 @@ static inline struct vudc *ep_to_vudc(struct vep *ep)
 int descriptor_cache(struct vudc *sdev);
 int stub_tx_loop(void *data);
 int stub_rx_loop(void *data);
+
+
+void v_enqueue_ret_unlink(struct vudc *sdev, __u32 seqnum, __u32 status);
+void v_enqueue_ret_submit(struct vudc *sdev, struct urbp *urb_p);
+
+void free_urbp_and_urb(struct urbp *urb_p);
+struct urbp* alloc_urbp(void);
+int alloc_urb_from_cmd(struct urb **urbp, struct usbip_header *pdu);
 
 #endif /* __USBIP_VUDC_H */

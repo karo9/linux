@@ -12,4 +12,4 @@ usbip-host-y := stub_dev.o stub_main.o stub_rx.o stub_tx.o
 # FIXME: when cleaning up commits, replace with proper CONFIG option at the very start
 
 obj-m += usbip-vudc.o
-usbip-vudc-y := vudc.o vudc_sysfs.o
+usbip-vudc-y := vudc.o vudc_sysfs.o vudc_tx.o
