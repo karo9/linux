@@ -33,7 +33,7 @@ extern const struct usb_gadget_ops vgadget_ops;
 
 struct vep {
 	struct usb_ep ep;
-	unsigned type:2;
+	unsigned type:2; /* type, as USB_ENDPOINT_XFER_* */
 
 	const struct usb_endpoint_descriptor *desc;
 	struct usb_gadget *gadget;
@@ -53,7 +53,7 @@ struct vrequest {
 struct urbp {
 	struct urb *urb;
 	struct vep *ep;
-	struct list_head urb_q;
+	struct list_head urb_q; /* urb queue */
 	unsigned long seqnum;
 	unsigned new:1;
 };
@@ -124,17 +124,25 @@ static inline struct vudc *ep_to_vudc(struct vep *ep)
 	return container_of(ep->gadget, struct vudc, gadget);
 }
 
+/* vudc_sysfs.c */
+
 int descriptor_cache(struct vudc *sdev);
+
+/* vudc_tx.c */
+
 int stub_tx_loop(void *data);
-int stub_rx_loop(void *data);
-
-
 void v_enqueue_ret_unlink(struct vudc *sdev, __u32 seqnum, __u32 status);
 void v_enqueue_ret_submit(struct vudc *sdev, struct urbp *urb_p);
 
-void free_urbp_and_urb(struct urbp *urb_p);
-struct urbp* alloc_urbp(void);
+/* vudc_rx.c */
+
+int stub_rx_loop(void *data);
+
+/* vudc_dev.c */
+
 int alloc_urb_from_cmd(struct urb **urbp, struct usbip_header *pdu);
+struct urbp* alloc_urbp(void);
+void free_urbp_and_urb(struct urbp *urb_p);
 
 struct vep *find_endpoint(struct vudc *vudc, u8 address);
 
