@@ -33,24 +33,8 @@
 #define debug_print(...) \
 		do { if (DEBUG) printk(KERN_ERR __VA_ARGS__); } while (0)
 
-static const char driver_desc[] = DRIVER_DESC;
 static const char gadget_name[] = "usbip-vudc";
-
-MODULE_DESCRIPTION(DRIVER_DESC);
-/* Add your names here */
-MODULE_AUTHOR("Krzysztof Opasiak, Karol Kosik");
-MODULE_LICENSE("GPL");
-
-struct vudc_module_parameters {
-	int num;
-};
-
-static struct vudc_module_parameters mod_data = {
-	.num = 1
-};
-
-module_param_named(num, mod_data.num, uint, S_IRUGO);
-MODULE_PARM_DESC(num, "number of emulated controllers");
+struct list_head vudc_devices = LIST_HEAD_INIT(vudc_devices);
 
 const char ep0name[] = "ep0";
 const char *const ep_name[] = {
@@ -1055,7 +1039,7 @@ static int vudc_resume(struct platform_device *pdev)
 	return -ENOSYS;
 }
 
-static struct platform_driver vudc_driver = {
+struct platform_driver vudc_driver = {
 	.probe		= vudc_probe,
 	.remove		= vudc_remove,
 	.suspend	= vudc_suspend,
@@ -1065,13 +1049,7 @@ static struct platform_driver vudc_driver = {
 	},
 };
 
-struct vudc_device {
-	struct platform_device *dev;
-	struct list_head list;
-};
-
-static struct vudc_device *alloc_vudc_device(
-	const char *dev_name, int devid)
+struct vudc_device *alloc_vudc_device(int devid)
 {
 	struct vudc_device *udc_dev = NULL;
 
@@ -1081,7 +1059,7 @@ static struct vudc_device *alloc_vudc_device(
 
 	INIT_LIST_HEAD(&udc_dev->list);
 
-	udc_dev->dev = platform_device_alloc(dev_name, devid);
+	udc_dev->dev = platform_device_alloc(gadget_name, devid);
 	if (!udc_dev->dev) {
 		kfree(udc_dev);
 		udc_dev = NULL;
@@ -1091,96 +1069,8 @@ out:
 	return udc_dev;
 }
 
-static void put_vudc_device(struct vudc_device *udc_dev)
+void put_vudc_device(struct vudc_device *udc_dev)
 {
 	platform_device_put(udc_dev->dev);
 	kfree(udc_dev);
 }
-
-static struct list_head vudc_devices = LIST_HEAD_INIT(vudc_devices);
-
-static int __init init(void)
-{
-	int retval = -ENOMEM;
-	int i;
-	struct vudc_device *udc_dev = NULL, *udc_dev2 = NULL;
-
-	if (usb_disabled())
-		return -ENODEV;
-
-	if (mod_data.num < 1) {
-		pr_err("Number of emulated UDC must be greater than 1");
-		return -EINVAL;
-	}
-
-	for (i = 0; i < mod_data.num; i++) {
-		udc_dev = alloc_vudc_device(gadget_name, i);
-		if (!udc_dev) {
-			list_for_each_entry_safe(udc_dev, udc_dev2,
-						 &vudc_devices, list) {
-				list_del(&udc_dev->list);
-				put_vudc_device(udc_dev);
-			}
-			goto out;
-		}
-		list_add_tail(&udc_dev->list, &vudc_devices);
-	}
-
-	retval = platform_driver_register(&vudc_driver);
-	if (retval < 0)
-		goto err_register_udc_driver;
-
-	list_for_each_entry(udc_dev, &vudc_devices, list) {
-		retval = platform_device_add(udc_dev->dev);
-		if (retval < 0) {
-			list_for_each_entry(udc_dev2, &vudc_devices, list) {
-				if (udc_dev2 == udc_dev)
-					break;
-				platform_device_del(udc_dev2->dev);
-			}
-			goto err_add_udc;
-		}
-	}
-	list_for_each_entry(udc_dev, &vudc_devices, list) {
-		if (!platform_get_drvdata(udc_dev->dev)) {
-			/*
-			 * The udc was added successfully but its probe
-			 * function failed for some reason.
-			 */
-			retval = -EINVAL;
-			goto err_probe_udc;
-		}
-	}
-	return retval;
-
-err_probe_udc:
-	list_for_each_entry(udc_dev, &vudc_devices, list)
-		platform_device_del(udc_dev->dev);
-
-err_add_udc:
-	platform_driver_unregister(&vudc_driver);
-
-err_register_udc_driver:
-	list_for_each_entry_safe(udc_dev, udc_dev2, &vudc_devices, list) {
-		list_del(&udc_dev->list);
-		put_vudc_device(udc_dev);
-	}
-
-out:
-	return retval;
-}
-module_init(init);
-
-static void __exit cleanup(void)
-{
-	struct vudc_device *udc_dev = NULL, *udc_dev2 = NULL;
-
-	list_for_each_entry_safe(udc_dev, udc_dev2, &vudc_devices, list) {
-		list_del(&udc_dev->list);
-		platform_device_unregister(udc_dev->dev);
-		put_vudc_device(udc_dev);
-	}
-	platform_driver_unregister(&vudc_driver);
-}
-module_exit(cleanup);
-

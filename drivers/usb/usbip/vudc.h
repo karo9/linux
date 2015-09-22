@@ -11,6 +11,7 @@
 #define __USBIP_VUDC_H
 
 #include <linux/device.h>
+#include <linux/platform_device.h>
 #include <linux/usb.h>
 #include <linux/usb/gadget.h>
 #include <linux/usb/ch9.h>
@@ -24,6 +25,8 @@
 
 
 extern const char *const ep_name[];
+extern struct list_head vudc_devices;
+extern struct platform_driver vudc_driver;
 
 struct vep {
 	struct usb_ep ep;
@@ -87,6 +90,11 @@ struct vudc {
 	u16 devstatus;
 };
 
+struct vudc_device {
+	struct platform_device *dev;
+	struct list_head list;
+};
+
 extern const struct attribute_group vudc_attr_group;
 
 /* visible everywhere */
@@ -126,5 +134,8 @@ struct urbp* alloc_urbp(void);
 int alloc_urb_from_cmd(struct urb **urbp, struct usbip_header *pdu);
 
 struct vep *find_endpoint(struct vudc *vudc, u8 address);
+
+struct vudc_device *alloc_vudc_device(int devid);
+void put_vudc_device(struct vudc_device *udc_dev);
 
 #endif /* __USBIP_VUDC_H */
