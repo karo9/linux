@@ -138,6 +138,10 @@ void v_enqueue_ret_submit(struct vudc *sdev, struct urbp *urb_p);
 
 int stub_rx_loop(void *data);
 
+/* vudc_transfer.c */
+
+void v_timer(unsigned long _vudc);
+
 /* vudc_dev.c */
 
 int alloc_urb_from_cmd(struct urb **urbp, struct usbip_header *pdu);
