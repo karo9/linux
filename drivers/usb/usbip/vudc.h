@@ -125,4 +125,6 @@ void free_urbp_and_urb(struct urbp *urb_p);
 struct urbp* alloc_urbp(void);
 int alloc_urb_from_cmd(struct urb **urbp, struct usbip_header *pdu);
 
+struct vep *find_endpoint(struct vudc *vudc, u8 address);
+
 #endif /* __USBIP_VUDC_H */
