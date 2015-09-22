@@ -13,6 +13,7 @@
 #include <linux/usb/ch9.h>
 #include <linux/sysfs.h>
 #include <linux/kthread.h>
+#include <linux/byteorder/generic.h>
 
 #include "usbip_common.h"
 #include "stub.h"
