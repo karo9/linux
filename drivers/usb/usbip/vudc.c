@@ -8,8 +8,6 @@
  */
 
 #include <linux/device.h>
-#include <linux/module.h>
-#include <linux/net.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
 #include <linux/platform_device.h>
@@ -20,7 +18,6 @@
 #include <linux/file.h>
 #include <linux/byteorder/generic.h>
 #include <linux/timer.h>
-#include <net/sock.h>
 
 #include "usbip_common.h"
 #include "stub.h"
