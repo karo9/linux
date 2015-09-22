@@ -25,6 +25,8 @@ static struct vudc_module_parameters mod_data = {
 module_param_named(num, mod_data.num, uint, S_IRUGO);
 MODULE_PARM_DESC(num, "number of emulated controllers");
 
+struct list_head vudc_devices = LIST_HEAD_INIT(vudc_devices);
+
 static int __init init(void)
 {
 	int retval = -ENOMEM;

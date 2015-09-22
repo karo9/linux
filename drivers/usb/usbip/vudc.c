@@ -34,7 +34,6 @@
 		do { if (DEBUG) printk(KERN_ERR __VA_ARGS__); } while (0)
 
 static const char gadget_name[] = "usbip-vudc";
-struct list_head vudc_devices = LIST_HEAD_INIT(vudc_devices);
 
 const char ep0name[] = "ep0";
 const char *const ep_name[] = {
