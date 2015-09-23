@@ -53,7 +53,7 @@ static void stub_recv_cmd_submit(struct vudc *sdev,
 	if (!urb_p->ep) {
 		/* we don't know the type, there may be isoc data! */
 		usbip_event_add(&sdev->udev, SDEV_EVENT_ERROR_TCP);
-		return;
+		goto free_urbp;
 	}
 	urb_p->new = 1;
 	urb_p->seqnum = pdu->base.seqnum;
@@ -61,7 +61,7 @@ static void stub_recv_cmd_submit(struct vudc *sdev,
 	ret = alloc_urb_from_cmd(&urb_p->urb, pdu, urb_p->ep->type);
 	if (ret) {
 		usbip_event_add(&sdev->udev, SDEV_EVENT_ERROR_MALLOC);
-		return;
+		goto free_urbp;
 	}
 
 	urb_p->urb->status = -EINPROGRESS;
@@ -84,15 +84,19 @@ static void stub_recv_cmd_submit(struct vudc *sdev,
 	}
 
 	if (usbip_recv_xbuff(&sdev->udev, urb_p->urb) < 0)
-		return;
+		goto free_urbp;
 
 	if (usbip_recv_iso(&sdev->udev, urb_p->urb) < 0)
-		return;
+		goto free_urbp;
 
 	spin_lock_irqsave(&sdev->lock, flags);
 	v_kick_timer(sdev, jiffies);
 	list_add_tail(&urb_p->urb_q, &sdev->urb_q);
 	spin_unlock_irqrestore(&sdev->lock, flags);
+	return;
+
+free_urbp:
+	free_urbp_and_urb(urb_p);
 }
 
 static void stub_rx_pdu(struct usbip_device *ud)
