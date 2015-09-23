@@ -228,7 +228,8 @@ static int vgadget_pullup(struct usb_gadget *_gadget, int value)
 
 	if (value && vudc->driver) {
 		/* TODO - setup proper speed */
-		vudc->gadget.speed = USB_SPEED_HIGH;
+		vudc->gadget.speed = min_t(u8, USB_SPEED_HIGH,
+					   vudc->driver->max_speed);
 
 		if(vudc->gadget.speed == USB_SPEED_SUPER)
 			vudc->ep[0].ep.maxpacket = 9;
