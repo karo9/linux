@@ -322,6 +322,7 @@ static void v_timer(unsigned long _vudc)
 		ep->already_seen = 0;
 	}
 
+restart:
 	list_for_each_entry_safe(urb_p, tmp, &sdev->urb_q, urb_q) {
 		struct urb *urb = urb_p->urb;
 		ep = urb_p->ep;
@@ -408,6 +409,8 @@ return_urb:
 		}
 		wake_up(&sdev->tx_waitq);
 		spin_unlock(&sdev->lock_tx);
+
+		goto restart;
 	}
 
 	/* TODO - also wait on empty usb_request queues? */
