@@ -36,7 +36,8 @@
 static const char usbip_attach_usage_string[] =
 	"usbip attach <args>\n"
 	"    -r, --remote=<host>      The machine with exported USB devices\n"
-	"    -b, --busid=<busid>    Busid of the device on <host>\n";
+	"    -b, --busid=<busid>    Busid of the device on <host>\n"
+	"    -d, --device=<devid>    Id of the virtual UDC on <host>\n";
 
 int device_flag;
 

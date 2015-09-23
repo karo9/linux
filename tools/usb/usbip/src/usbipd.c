@@ -65,6 +65,11 @@ static const char usbipd_help_string[] =
 	"	-6, --ipv6\n"
 	"		Bind to IPv6. Default is both.\n"
 	"\n"
+	"	-e, --device\n"
+	"		Run in device mode.\n"
+	"		Rather than drive an attached device, create\n"
+	"		a virtual UDC to bind gadgets to.\n"
+	"\n"
 	"	-D, --daemon\n"
 	"		Run as a daemon process.\n"
 	"\n"
@@ -555,7 +560,7 @@ static int do_standalone_mode(int daemonize, int ipv4, int ipv6)
 	} else {
 		if (usbip_device_driver_open()) {
 			err("please load " USBIP_CORE_MOD_NAME ".ko and "
-				USBIP_HOST_DRV_NAME ".ko!");
+				USBIP_DEVICE_DRV_NAME ".ko!");
 			return -1;
 		}
 	}
