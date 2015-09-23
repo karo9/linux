@@ -110,8 +110,7 @@ static int recv_request_import(int sockfd)
 	}
 	PACK_OP_IMPORT_REQUEST(0, &req);
 
-	if (device_flag)
-	{
+	if (device_flag) {
 		list_for_each(i, &device_driver->edev_list) {
 			edev = list_entry(i, struct usbip_exported_device, node);
 			if (!strncmp(req.busid, edev->udev.busid, SYSFS_BUS_ID_SIZE)) {
@@ -120,9 +119,7 @@ static int recv_request_import(int sockfd)
 				break;
 			}
 		}
-	}
-	else 
-	{
+	} else {
 		list_for_each(i, &host_driver->edev_list) {
 			edev = list_entry(i, struct usbip_exported_device, node);
 			if (!strncmp(req.busid, edev->udev.busid, SYSFS_BUS_ID_SIZE)) {
@@ -186,14 +183,11 @@ static int send_reply_devlist(int connfd)
 
 	reply.ndev = 0;
 	/* number of exported devices */
-	if(device_flag)
-	{
+	if(device_flag) {
 		list_for_each(j, &device_driver->edev_list) {
 			reply.ndev += 1;
 		}
-	}
-	else
-	{
+	} else {
 		list_for_each(j, &host_driver->edev_list) {
 			reply.ndev += 1;
 		}
@@ -213,8 +207,7 @@ static int send_reply_devlist(int connfd)
 		return -1;
 	}
 
-	if(device_flag)
-	{
+	if(device_flag) {
 		list_for_each(j, &device_driver->edev_list) {
 			edev = list_entry(j, struct usbip_exported_device, node);
 			dump_usb_device(&edev->udev);
@@ -240,9 +233,7 @@ static int send_reply_devlist(int connfd)
 				}
 			}
 		}
-	}
-	else
-	{
+	} else {
 		list_for_each(j, &host_driver->edev_list) {
 			edev = list_entry(j, struct usbip_exported_device, node);
 			dump_usb_device(&edev->udev);
@@ -561,8 +552,7 @@ static int do_standalone_mode(int daemonize, int ipv4, int ipv6)
 				USBIP_HOST_DRV_NAME ".ko!");
 			return -1;
 		}
-	}
-	else {
+	} else {
 		if (usbip_device_driver_open()) {
 			err("please load " USBIP_CORE_MOD_NAME ".ko and "
 				USBIP_HOST_DRV_NAME ".ko!");
@@ -651,7 +641,7 @@ static int do_standalone_mode(int daemonize, int ipv4, int ipv6)
 
 	if(device_flag)
 		usbip_device_driver_open();
-	else 
+	else
 		usbip_host_driver_close();
 
 	return 0;
