@@ -623,7 +623,7 @@ static int init_vudc_hw(struct vudc *vudc)
 
 	spin_lock_init(&udev->lock);
 	udev->status = SDEV_ST_AVAILABLE;
-	udev->side = USBIP_VUDC; /* FIXME - add to common*/
+	udev->side = USBIP_VUDC;
 
 	udev->eh_ops.shutdown = vudc_shutdown;
 	udev->eh_ops.reset    = vudc_device_reset;

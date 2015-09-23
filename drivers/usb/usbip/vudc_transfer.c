@@ -194,8 +194,6 @@ top:
 		dev_len = req->req.length - req->req.actual;
 		len = min(host_len, dev_len);
 
-		/* FIXME update emulated data toggle too */
-
 		to_host = usb_pipein(urb->pipe);
 		if (unlikely(len == 0))
 			is_short = 1;
@@ -391,7 +389,6 @@ restart:
 treat_control_like_bulk:
 			total -= transfer(sdev, urb, ep, limit);
 		}
-		/* FIXME - what does dummy_hcd actually do here? */
 		if (urb->status == -EINPROGRESS)
 			continue;
 
