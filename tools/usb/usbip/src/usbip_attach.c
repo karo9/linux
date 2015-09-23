@@ -168,11 +168,7 @@ static int query_import_device(int sockfd, char *busid)
 	}
 
 	/* import a device */
-/* 	if(device_flag)
-		return -1;
-	else*/
-		return import_device(sockfd, &reply.udev);
-
+	return import_device(sockfd, &reply.udev);
 }
 
 static int attach_device(char *host, char *busid)
