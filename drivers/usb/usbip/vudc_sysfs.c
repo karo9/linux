@@ -27,6 +27,7 @@
 #define debug_print(...) \
 		do { if (DEBUG) printk(KERN_ERR __VA_ARGS__); } while (0)
 
+/* called with udc->lock held */
 static ssize_t fetch_descriptor(struct usb_ctrlrequest* req, struct vudc* udc,
 				char *out, ssize_t sz, ssize_t maxsz)
 {
@@ -37,7 +38,9 @@ static ssize_t fetch_descriptor(struct usb_ctrlrequest* req, struct vudc* udc,
 
 	if (!udc->driver)	/* No device for export */
 		return 0;
+	spin_unlock(&udc->lock);
 	ret = udc->driver->setup(&(udc->gadget), req);
+	spin_lock(&udc->lock);
 	if (ret < 0) {
 		debug_print("[vudc] Failed to setup device descriptor request!\n");
 		goto exit;
@@ -64,6 +67,7 @@ exit:
 	return ret;
 }
 
+/* called with sdev->lock held */
 int descriptor_cache(struct vudc *sdev)
 {
 	struct usb_device_descriptor *dev_d = sdev->dev_descr;

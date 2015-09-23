@@ -247,8 +247,8 @@ static int vgadget_udc_start(struct usb_gadget *g,
 
 	spin_lock_irqsave(&vudc->lock, flags);
 	vudc->driver = driver;
-	spin_unlock_irqrestore(&vudc->lock, flags);
 	ret = descriptor_cache(vudc);
+	spin_unlock_irqrestore(&vudc->lock, flags);
 	if (ret) {
 		/* FIXME: add correct event */
 		usbip_event_add(&vudc->udev, SDEV_EVENT_ERROR_MALLOC);
