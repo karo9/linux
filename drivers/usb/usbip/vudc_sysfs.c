@@ -124,7 +124,7 @@ static ssize_t store_sockfd(struct device *dev, struct device_attribute *attr,
 	if (rv != 1)
 		return -EINVAL;
 
-	if (sockfd != 1) {
+	if (sockfd != -1) {
 		spin_lock_irq(&vudc->udev.lock);
 
 		if (vudc->udev.status != SDEV_ST_AVAILABLE) {
