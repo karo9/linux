@@ -7,25 +7,6 @@
 
 #include "vudc.h"
 
-static int recv_xbuff(struct usbip_device *ud, struct urb *urb)
-{
-	int ret;
-	int size;
-
-	if (urb->pipe & USB_DIR_IN)
-		return 0;
-
-	size = urb->transfer_buffer_length;
-	/* no need to recv xbuff */
-	if (size <= 0)
-		return 0;
-
-	ret = usbip_recv(ud->tcp_socket, urb->transfer_buffer, size);
-	if (ret != size)
-		return -EPIPE;
-	return ret;
-}
-
 static void stub_recv_cmd_unlink(struct vudc *sdev,
 				struct usbip_header *pdu)
 {
@@ -69,6 +50,11 @@ static void stub_recv_cmd_submit(struct vudc *sdev,
 		address |= USB_DIR_IN;
 
 	urb_p->ep = find_endpoint(sdev, address);
+	if (!urb_p->ep) {
+		/* we don't know the type, there may be isoc data! */
+		usbip_event_add(&sdev->udev, SDEV_EVENT_ERROR_TCP);
+		return;
+	}
 	urb_p->new = 1;
 	urb_p->seqnum = pdu->base.seqnum;
 
@@ -79,12 +65,29 @@ static void stub_recv_cmd_submit(struct vudc *sdev,
 	}
 
 	urb_p->urb->status = -EINPROGRESS;
-	ret = recv_xbuff(&sdev->udev, urb_p->urb);
-	if (ret < 0)
-		usbip_event_add(&sdev->udev, SDEV_EVENT_ERROR_TCP);
 
-	usbip_dump_header(pdu);
-	usbip_dump_urb(urb_p->urb);
+	/* FIXME: more pipe setup to please usbip_common */
+	urb_p->urb->pipe &= ~(11 << 30);
+	switch(urb_p->ep->type) {
+	case USB_ENDPOINT_XFER_BULK:
+		urb_p->urb->pipe |= (PIPE_BULK << 30);
+		break;
+	case USB_ENDPOINT_XFER_INT:
+		urb_p->urb->pipe |= (PIPE_INTERRUPT << 30);
+		break;
+	case USB_ENDPOINT_XFER_CONTROL:
+		urb_p->urb->pipe |= (PIPE_CONTROL << 30);
+		break;
+	case USB_ENDPOINT_XFER_ISOC:
+		urb_p->urb->pipe |= (PIPE_ISOCHRONOUS << 30);
+		break;
+	}
+
+	if (usbip_recv_xbuff(&sdev->udev, urb_p->urb) < 0)
+		return;
+
+	if (usbip_recv_iso(&sdev->udev, urb_p->urb) < 0)
+		return;
 
 	spin_lock_irqsave(&sdev->lock, flags);
 	v_kick_timer(sdev, jiffies);
