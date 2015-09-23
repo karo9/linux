@@ -49,12 +49,17 @@ static void stub_recv_cmd_submit(struct vudc *sdev,
 	if (pdu->base.direction == USBIP_DIR_IN)
 		address |= USB_DIR_IN;
 
+	spin_lock_irq(&sdev->lock);
 	urb_p->ep = find_endpoint(sdev, address);
 	if (!urb_p->ep) {
 		/* we don't know the type, there may be isoc data! */
+		spin_unlock_irq(&sdev->lock);
 		usbip_event_add(&sdev->udev, SDEV_EVENT_ERROR_TCP);
 		goto free_urbp;
 	}
+	urb_p->type = urb_p->ep->type;
+	spin_unlock_irq(&sdev->lock);
+
 	urb_p->new = 1;
 	urb_p->seqnum = pdu->base.seqnum;
 

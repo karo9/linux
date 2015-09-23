@@ -55,6 +55,7 @@ struct urbp {
 	struct vep *ep;
 	struct list_head urb_q; /* urb queue */
 	unsigned long seqnum;
+	unsigned type:2; /* for tx, since ep type can change after */
 	unsigned new:1;
 };
 

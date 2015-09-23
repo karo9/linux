@@ -78,7 +78,7 @@ static int v_send_ret_submit(struct vudc *sdev, struct urbp *urb_p)
 	memset(&pdu_header, 0, sizeof(pdu_header));
 	memset(&msg, 0, sizeof(msg));
 
-	if (urb_p->ep->type == USB_ENDPOINT_XFER_ISOC)
+	if (urb_p->type == USB_ENDPOINT_XFER_ISOC)
 		iovnum = 2 + urb->number_of_packets;
 	else
 		iovnum = 2;
@@ -103,13 +103,13 @@ static int v_send_ret_submit(struct vudc *sdev, struct urbp *urb_p)
 	txsize += sizeof(pdu_header);
 
 	/* 2. setup transfer buffer */
-	if (urb_p->ep->type != USB_ENDPOINT_XFER_ISOC &&
+	if (urb_p->type != USB_ENDPOINT_XFER_ISOC &&
 	    usb_pipein(urb->pipe) && urb->actual_length > 0) {
 		iov[iovnum].iov_base = urb->transfer_buffer;
 		iov[iovnum].iov_len  = urb->actual_length;
 		iovnum++;
 		txsize += urb->actual_length;
-	} else if (urb_p->ep->type == USB_ENDPOINT_XFER_ISOC &&
+	} else if (urb_p->type == USB_ENDPOINT_XFER_ISOC &&
 		   usb_pipein(urb->pipe)) {
 	/* FIXME - copypasted from stub_tx, refactor */
 		int i;
@@ -131,7 +131,7 @@ static int v_send_ret_submit(struct vudc *sdev, struct urbp *urb_p)
 	}
 
 	/* 3. setup iso_packet_descriptor */
-	if (urb_p->ep->type == USB_ENDPOINT_XFER_ISOC) {
+	if (urb_p->type == USB_ENDPOINT_XFER_ISOC) {
 		ssize_t len = 0;
 
 		iso_buffer = usbip_alloc_iso_desc_pdu(urb, &len);
