@@ -249,8 +249,8 @@ static int vgadget_udc_start(struct usb_gadget *g,
 	unsigned long flags;
 	int ret;
 
-	spin_lock_irqsave(&vudc->lock, flags);
 	vudc->driver = driver;
+	spin_lock_irqsave(&vudc->lock, flags);
 	ret = descriptor_cache(vudc);
 	spin_unlock_irqrestore(&vudc->lock, flags);
 	if (ret) {
@@ -263,15 +263,12 @@ static int vgadget_udc_start(struct usb_gadget *g,
 static int vgadget_udc_stop(struct usb_gadget *g)
 {
 	struct vudc *vudc = usb_gadget_to_vudc(g);
-	unsigned long flags;
 
 	usbip_event_add(&vudc->udev, SDEV_EVENT_REMOVED);
 	usbip_stop_eh(&vudc->udev); /* Wait for eh completion */
 	usbip_start_eh(&vudc->udev);
 
-	spin_lock_irqsave(&vudc->lock, flags);
 	vudc->driver = NULL;
-	spin_unlock_irqrestore(&vudc->lock, flags);
 	return 0;
 }
 
@@ -293,18 +290,24 @@ static int vep_enable(struct usb_ep *_ep,
 	struct vudc *sdev;
 	int retval;
 	unsigned maxp;
+	unsigned long flags;
 
 	ep = usb_ep_to_vep(_ep);
+	sdev = ep_to_vudc(ep);
+	retval = -EINVAL;
+
+
 	if (!_ep || !desc || ep->desc || _ep->name == ep0name
 			|| desc->bDescriptorType != USB_DT_ENDPOINT)
 		return -EINVAL;
-	sdev = ep_to_vudc(ep);
+
 	if (!sdev->driver)
 		return -ESHUTDOWN;
 
+	spin_lock_irqsave(&sdev->lock, flags);
+
 	maxp = usb_endpoint_maxp(desc) & 0x7ff;
 
-	retval = -EINVAL;
 	switch (usb_endpoint_type(desc)) {
 	case USB_ENDPOINT_XFER_BULK:
 		if (strstr(ep->ep.name, "-iso")
@@ -339,6 +342,7 @@ static int vep_enable(struct usb_ep *_ep,
 	retval = 0;
 
 done:
+	spin_unlock_irqrestore(&sdev->lock, flags);
 	return retval;
 }
 
@@ -349,9 +353,9 @@ static int vep_disable(struct usb_ep *_ep)
 	unsigned long flags;
 
 	ep = usb_ep_to_vep(_ep);
+	sdev = ep_to_vudc(ep);
 	if (!_ep || !ep->desc || _ep->name == ep0name)
 		return -EINVAL;
-	sdev = ep_to_vudc(ep);
 
 	spin_lock_irqsave(&sdev->lock, flags);
 	ep->desc = NULL;
@@ -407,10 +411,10 @@ static int vep_queue(struct usb_ep *_ep, struct usb_request *_req,
 	req = usb_request_to_vrequest(_req);
 	vudc = ep_to_vudc(ep);
 
+	spin_lock_irqsave(&vudc->lock, flags);
 	_req->actual = 0;
 	_req->status = -EINPROGRESS;
 
-	spin_lock_irqsave(&vudc->lock, flags);
 	list_add_tail(&req->queue, &ep->queue);
 	spin_unlock_irqrestore(&vudc->lock, flags);
 
@@ -458,7 +462,7 @@ vep_set_halt_and_wedge(struct usb_ep *_ep, int value, int wedged)
 {
 	struct vep		*ep;
 	struct vudc		*sdev;
-
+	/* FIXME should we lock here? */
 	if (!_ep)
 		return -EINVAL;
 	ep = usb_ep_to_vep(_ep);
@@ -544,16 +548,17 @@ static void vudc_device_reset(struct usbip_device *ud)
 	stop_activity(sdev);
 	spin_unlock_irqrestore(&sdev->lock, flags);
 	usb_gadget_udc_reset(&sdev->gadget, sdev->driver);
-	spin_lock_irq(&ud->lock);
+	spin_lock_irqsave(&ud->lock, flags);
 	ud->status = SDEV_ST_AVAILABLE;
-	spin_unlock_irq(&ud->lock);
+	spin_unlock_irqrestore(&ud->lock, flags);
 }
 
 static void vudc_device_unusable(struct usbip_device *ud)
 {
-	spin_lock_irq(&ud->lock);
+	unsigned long flags;
+	spin_lock_irqsave(&ud->lock, flags);
 	ud->status = SDEV_ST_ERROR;
-	spin_unlock_irq(&ud->lock);
+	spin_unlock_irqrestore(&ud->lock, flags);
 }
 
 /* device setup / cleanup */
