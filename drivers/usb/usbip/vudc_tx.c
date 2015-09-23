@@ -65,60 +65,60 @@ static int v_send_ret_unlink(struct vudc * sdev, struct stub_unlink *unlink)
 
 static int v_send_ret_submit(struct vudc *sdev, struct urbp *urb_p)
 {
-		struct urb* urb = urb_p->urb;
-		struct usbip_header pdu_header;
-		struct usbip_iso_packet_descriptor *iso_buffer = NULL;
-		struct kvec *iov = NULL;
-		int iovnum = 0;
-		int ret;
-		size_t txsize;
-		struct msghdr msg;
+	struct urb* urb = urb_p->urb;
+	struct usbip_header pdu_header;
+	struct usbip_iso_packet_descriptor *iso_buffer = NULL;
+	struct kvec *iov = NULL;
+	int iovnum = 0;
+	int ret;
+	size_t txsize;
+	struct msghdr msg;
 
-		txsize = 0;
-		memset(&pdu_header, 0, sizeof(pdu_header));
-		memset(&msg, 0, sizeof(msg));
+	txsize = 0;
+	memset(&pdu_header, 0, sizeof(pdu_header));
+	memset(&msg, 0, sizeof(msg));
 
-		if (urb_p->ep->type == USB_ENDPOINT_XFER_ISOC)
-			iovnum = 2 + urb->number_of_packets;
-		else
-			iovnum = 2;
+	if (urb_p->ep->type == USB_ENDPOINT_XFER_ISOC)
+		iovnum = 2 + urb->number_of_packets;
+	else
+		iovnum = 2;
 
-		iov = kcalloc(iovnum, sizeof(struct kvec), GFP_KERNEL);
+	iov = kcalloc(iovnum, sizeof(struct kvec), GFP_KERNEL);
 
-		if (!iov) {
-			usbip_event_add(&sdev->udev, SDEV_EVENT_ERROR_MALLOC);
-			return -1;
-		}
-		iovnum = 0;
-		setup_ret_submit_pdu(&pdu_header, urb_p);
-		usbip_dbg_stub_tx("setup txdata seqnum: %d urb: %p\n",
-				  pdu_header.base.seqnum, urb);
-		usbip_header_correct_endian(&pdu_header, 1);
-		iov[iovnum].iov_base = &pdu_header;
-		iov[iovnum].iov_len  = sizeof(pdu_header);
+	if (!iov) {
+		usbip_event_add(&sdev->udev, SDEV_EVENT_ERROR_MALLOC);
+		return -1;
+	}
+	iovnum = 0;
+	setup_ret_submit_pdu(&pdu_header, urb_p);
+	usbip_dbg_stub_tx("setup txdata seqnum: %d urb: %p\n",
+			  pdu_header.base.seqnum, urb);
+	usbip_header_correct_endian(&pdu_header, 1);
+	iov[iovnum].iov_base = &pdu_header;
+	iov[iovnum].iov_len  = sizeof(pdu_header);
+	iovnum++;
+	txsize += sizeof(pdu_header);
+
+	if (usb_pipein(urb->pipe) && urb->actual_length > 0) {
+		iov[iovnum].iov_base = urb->transfer_buffer;
+		iov[iovnum].iov_len  = urb->actual_length;
 		iovnum++;
-		txsize += sizeof(pdu_header);
+		txsize += urb->actual_length;
+	}
 
-		if (usb_pipein(urb->pipe) && urb->actual_length > 0) {
-			iov[iovnum].iov_base = urb->transfer_buffer;
-			iov[iovnum].iov_len  = urb->actual_length;
-			iovnum++;
-			txsize += urb->actual_length;
-		}
-
-		ret = kernel_sendmsg(sdev->udev.tcp_socket, &msg,
+	ret = kernel_sendmsg(sdev->udev.tcp_socket, &msg,
 						iov,  iovnum, txsize);
-		if (ret != txsize) {
-			kfree(iov);
-			kfree(iso_buffer);
-			usbip_event_add(&sdev->udev, SDEV_EVENT_ERROR_TCP);
-			return -1;
-		}
-
+	if (ret != txsize) {
 		kfree(iov);
 		kfree(iso_buffer);
-		free_urbp_and_urb(urb_p);
-		return txsize;
+		usbip_event_add(&sdev->udev, SDEV_EVENT_ERROR_TCP);
+		return -1;
+	}
+
+	kfree(iov);
+	kfree(iso_buffer);
+	free_urbp_and_urb(urb_p);
+	return txsize;
 }
 
 static int v_send_ret(struct vudc *sdev)
