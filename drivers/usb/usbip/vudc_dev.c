@@ -231,7 +231,6 @@ static int vgadget_pullup(struct usb_gadget *_gadget, int value)
 	struct vudc *vudc = usb_gadget_to_vudc(_gadget);
 
 	if (value && vudc->driver) {
-		/* TODO - setup proper speed */
 		vudc->gadget.speed = min_t(u8, USB_SPEED_HIGH,
 					   vudc->driver->max_speed);
 
@@ -302,8 +301,6 @@ static int vep_enable(struct usb_ep *_ep,
 	sdev = ep_to_vudc(ep);
 	if (!sdev->driver)
 		return -ESHUTDOWN;
-
-	/* TODO - check if in state allowing for enable */
 
 	maxp = usb_endpoint_maxp(desc) & 0x7ff;
 
