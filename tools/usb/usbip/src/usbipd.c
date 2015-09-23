@@ -568,8 +568,10 @@ static int do_standalone_mode(int daemonize, int ipv4, int ipv6)
 	if (daemonize) {
 		if (daemon(0, 0) < 0) {
 			err("daemonizing failed: %s", strerror(errno));
-			// todo
-			usbip_host_driver_close();
+			if (device_flag)
+				usbip_device_driver_close();
+			else
+				usbip_host_driver_close();
 			return -1;
 		}
 		umask(0);
