@@ -48,11 +48,15 @@ const char *const ep_name[] = {
 
 /* urb-related structures alloc / free */
 
-int alloc_urb_from_cmd(struct urb **urbp, struct usbip_header *pdu)
+int alloc_urb_from_cmd(struct urb **urbp, struct usbip_header *pdu, u8 type)
 {
 	struct urb* urb;
-	/* TODO - support isoc packets */
-	urb = usb_alloc_urb(0, GFP_KERNEL);
+
+	if (type == USB_ENDPOINT_XFER_ISOC)
+		urb = usb_alloc_urb(pdu->u.cmd_submit.number_of_packets,
+					  GFP_KERNEL);
+	else
+		urb = usb_alloc_urb(0, GFP_KERNEL);
 	if (!urb)
 		goto err;
 
@@ -61,13 +65,13 @@ int alloc_urb_from_cmd(struct urb **urbp, struct usbip_header *pdu)
 	if (urb->transfer_buffer_length > 0) {
 		urb->transfer_buffer = kzalloc(urb->transfer_buffer_length,
 			GFP_KERNEL);
-		if(!urb->transfer_buffer)
+		if (!urb->transfer_buffer)
 			goto free_urb;
 	}
 
 	urb->setup_packet = kmemdup(&pdu->u.cmd_submit.setup, 8,
 			    GFP_KERNEL);
-	if(!urb->setup_packet)
+	if (!urb->setup_packet)
 		goto free_buffer;
 
 	/*

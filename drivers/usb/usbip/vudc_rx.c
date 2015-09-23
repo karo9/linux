@@ -58,7 +58,7 @@ static void stub_recv_cmd_submit(struct vudc *sdev,
 	urb_p->new = 1;
 	urb_p->seqnum = pdu->base.seqnum;
 
-	ret = alloc_urb_from_cmd(&urb_p->urb, pdu);
+	ret = alloc_urb_from_cmd(&urb_p->urb, pdu, urb_p->ep->type);
 	if (ret) {
 		usbip_event_add(&sdev->udev, SDEV_EVENT_ERROR_MALLOC);
 		return;
