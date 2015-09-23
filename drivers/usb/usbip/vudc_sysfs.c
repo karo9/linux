@@ -150,6 +150,7 @@ static ssize_t store_sockfd(struct device *dev, struct device_attribute *attr,
 
 		spin_lock_irq(&vudc->lock);
 		do_gettimeofday(&vudc->start_time);
+		v_start_timer(vudc);
 		spin_unlock_irq(&vudc->lock);
 	} else {
 		spin_lock_irq(&vudc->udev.lock);

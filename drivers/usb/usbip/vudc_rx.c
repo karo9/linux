@@ -1,6 +1,5 @@
 #include <net/sock.h>
 #include <linux/list.h>
-#include <linux/timer.h>
 #include <linux/kthread.h>
 
 #include "usbip_common.h"
@@ -39,8 +38,7 @@ static void stub_recv_cmd_unlink(struct vudc *sdev,
 			continue;
 		urb_p->urb->unlinked = -ECONNRESET;
 		urb_p->seqnum = pdu->base.seqnum;
-		/* kick the timer */
-		mod_timer(&sdev->tr_timer, jiffies);
+		v_kick_timer(sdev, jiffies);
 		spin_unlock_irqrestore(&sdev->lock, flags);
 		return;
 	}
@@ -89,8 +87,7 @@ static void stub_recv_cmd_submit(struct vudc *sdev,
 	usbip_dump_urb(urb_p->urb);
 
 	spin_lock_irqsave(&sdev->lock, flags);
-	if (!timer_pending(&sdev->tr_timer))
-		mod_timer(&sdev->tr_timer, jiffies + 1);
+	v_kick_timer(sdev, jiffies);
 	list_add_tail(&urb_p->urb_q, &sdev->urb_q);
 	spin_unlock_irqrestore(&sdev->lock, flags);
 }

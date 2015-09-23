@@ -70,6 +70,19 @@ struct tx_item {
 	};
 };
 
+enum tr_state {
+	VUDC_TR_RUNNING,
+	VUDC_TR_IDLE,
+	VUDC_TR_STOPPED,
+};
+
+struct transfer_timer {
+	struct timer_list timer;
+	enum tr_state state;
+	u64 frame_start;
+	int frame_limit;
+};
+
 struct vudc {
 	struct usb_gadget gadget;
 	struct usb_gadget_driver *driver;
@@ -78,7 +91,7 @@ struct vudc {
 	struct usb_device_descriptor *dev_descr;
 
 	struct usbip_device udev;
-	struct timer_list tr_timer;
+	struct transfer_timer tr_timer;
 	struct timeval start_time;
 
 	struct list_head urb_q;
@@ -140,7 +153,10 @@ int stub_rx_loop(void *data);
 
 /* vudc_transfer.c */
 
-void v_timer(unsigned long _vudc);
+void v_init_timer(struct vudc *sdev);
+void v_start_timer(struct vudc *sdev);
+void v_kick_timer(struct vudc *sdev, u64 time);
+void v_stop_timer(struct vudc *sdev);
 
 /* vudc_dev.c */
 

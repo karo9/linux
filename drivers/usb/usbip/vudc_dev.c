@@ -17,7 +17,6 @@
 #include <linux/kthread.h>
 #include <linux/file.h>
 #include <linux/byteorder/generic.h>
-#include <linux/timer.h>
 
 #include "usbip_common.h"
 #include "stub.h"
@@ -634,7 +633,7 @@ static int init_vudc_hw(struct vudc *vudc)
 	vudc->gadget.ep0 = &vudc->ep[0].ep;
 	list_del_init(&vudc->ep[0].ep.ep_list);
 
-	setup_timer(&vudc->tr_timer, v_timer, (unsigned long) vudc);
+	v_init_timer(vudc);
 	return 0;
 
 	nomem_ep:
