@@ -327,24 +327,6 @@ static void nuke(struct dummy *dum, struct dummy_ep *ep)
 	}
 }
 
-/*static void show_all_queues(struct dummy *dum)
-{
-	struct dummy_ep	*ep;
-	struct dummy_request	*req;
-    //int list_size = 0;
-    return;
-
-	list_for_each_entry(ep, &dum->gadget.ep_list, ep.ep_list)
-    {
-        list_size = 0;
-        list_for_each_entry(req, &ep->queue, queue) {
-            ++list_size;
-        }
-        if(list_size > 0)
-            printk(KERN_ERR "show_all_queues, %s list size %d", ep->ep.name, list_size);
-    }
-}*/
-
 /* caller must hold lock */
 static void stop_activity(struct dummy *dum)
 {
@@ -504,7 +486,6 @@ static int dummy_enable(struct usb_ep *_ep,
 	unsigned		max;
 	int			retval;
 
-    printk(KERN_ERR "dummy_enable");
 	ep = usb_ep_to_dummy_ep(_ep);
 	if (!_ep || !desc || ep->desc || _ep->name == ep0name
 			|| desc->bDescriptorType != USB_DT_ENDPOINT)
@@ -612,7 +593,7 @@ static int dummy_enable(struct usb_ep *_ep,
 	}
 	ep->desc = desc;
 
-	printk(KERN_ERR "enabled %s (ep%d%s-%s) maxpacket %d stream %s\n",
+	dev_dbg(udc_dev(dum), "enabled %s (ep%d%s-%s) maxpacket %d stream %s\n",
 		_ep->name,
 		desc->bEndpointAddress & 0x0f,
 		(desc->bEndpointAddress & USB_DIR_IN) ? "in" : "out",
@@ -648,7 +629,6 @@ static int dummy_disable(struct usb_ep *_ep)
 	struct dummy		*dum;
 	unsigned long		flags;
 
-    printk(KERN_ERR "dummy_disable");
 	ep = usb_ep_to_dummy_ep(_ep);
 	if (!_ep || !ep->desc || _ep->name == ep0name)
 		return -EINVAL;
@@ -670,8 +650,6 @@ static struct usb_request *dummy_alloc_request(struct usb_ep *_ep,
 	struct dummy_ep		*ep;
 	struct dummy_request	*req;
 
-    printk(KERN_ERR "dummy_alloc_request");
-
 	if (!_ep)
 		return NULL;
 	ep = usb_ep_to_dummy_ep(_ep);
@@ -686,8 +664,6 @@ static struct usb_request *dummy_alloc_request(struct usb_ep *_ep,
 static void dummy_free_request(struct usb_ep *_ep, struct usb_request *_req)
 {
 	struct dummy_request	*req;
-
-    printk(KERN_ERR "dummy_free_request");
 
 	if (!_ep || !_req) {
 		WARN_ON(1);
@@ -711,9 +687,6 @@ static int dummy_queue(struct usb_ep *_ep, struct usb_request *_req,
 	struct dummy		*dum;
 	struct dummy_hcd	*dum_hcd;
 	unsigned long		flags;
-	//int		list_size;
-
-    printk(KERN_ERR "dummy_queue, %s", _ep->name);
 
 	req = usb_request_to_dummy_request(_req);
 	if (!_req || !list_empty(&req->queue) || !_req->complete)
@@ -729,7 +702,7 @@ static int dummy_queue(struct usb_ep *_ep, struct usb_request *_req,
 		return -ESHUTDOWN;
 
 #if 0
-	printk(KERN_ERR "ep %p queue req %p to %s, len %d buf %p\n",
+	dev_dbg(udc_dev(dum), "ep %p queue req %p to %s, len %d buf %p\n",
 			ep, _req, _ep->name, _req->length, _req->buf);
 #endif
 	_req->status = -EINPROGRESS;
@@ -752,14 +725,10 @@ static int dummy_queue(struct usb_ep *_ep, struct usb_request *_req,
 		spin_unlock(&dum->lock);
 		_req->actual = _req->length;
 		_req->status = 0;
-        printk(KERN_ERR "dummy_queue przerzucilem na FIFO i tu koncze");
 		usb_gadget_giveback_request(_ep, _req);
 		spin_lock(&dum->lock);
 	}  else
 		list_add_tail(&req->queue, &ep->queue);
-
-    //show_all_queues(dum);
-            
 	spin_unlock_irqrestore(&dum->lock, flags);
 
 	/* real hardware would likely enable transfers here, in case
@@ -775,8 +744,6 @@ static int dummy_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 	int			retval = -EINVAL;
 	unsigned long		flags;
 	struct dummy_request	*req = NULL;
-
-    printk(KERN_ERR "dummy_dequeue");
 
 	if (!_ep || !_req)
 		return retval;
@@ -813,8 +780,6 @@ dummy_set_halt_and_wedge(struct usb_ep *_ep, int value, int wedged)
 {
 	struct dummy_ep		*ep;
 	struct dummy		*dum;
-
-    printk(KERN_ERR "dummy_set_halt_wedge");
 
 	if (!_ep)
 		return -EINVAL;
@@ -877,8 +842,6 @@ static int dummy_g_get_frame(struct usb_gadget *_gadget)
 static int dummy_wakeup(struct usb_gadget *_gadget)
 {
 	struct dummy_hcd *dum_hcd;
-    
-    printk(KERN_ERR "dummy_wakeup");
 
 	dum_hcd = gadget_to_dummy_hcd(_gadget);
 	if (!(dum_hcd->dum->devstatus & ((1 << USB_DEVICE_B_HNP_ENABLE)
@@ -903,7 +866,7 @@ static int dummy_set_selfpowered(struct usb_gadget *_gadget, int value)
 {
 	struct dummy	*dum;
 
-    printk(KERN_ERR "dummy_set_selfpowered");
+	_gadget->is_selfpowered = (value != 0);
 	dum = gadget_to_dummy_hcd(_gadget)->dum;
 	if (value)
 		dum->devstatus |= (1 << USB_DEVICE_SELF_POWERED);
@@ -926,7 +889,6 @@ static int dummy_pullup(struct usb_gadget *_gadget, int value)
 	struct dummy	*dum;
 	unsigned long	flags;
 
-    printk(KERN_ERR "dummy_pullup");
 	dum = gadget_dev_to_dummy(&_gadget->dev);
 
 	if (value && dum->driver) {
@@ -1004,8 +966,6 @@ static int dummy_udc_start(struct usb_gadget *g,
 	struct dummy_hcd	*dum_hcd = gadget_to_dummy_hcd(g);
 	struct dummy		*dum = dum_hcd->dum;
 
-    printk(KERN_ERR "dummy_udc_start");
-
 	if (driver->max_speed == USB_SPEED_UNKNOWN)
 		return -EINVAL;
 
@@ -1025,8 +985,6 @@ static int dummy_udc_stop(struct usb_gadget *g)
 	struct dummy_hcd	*dum_hcd = gadget_to_dummy_hcd(g);
 	struct dummy		*dum = dum_hcd->dum;
 
-    printk(KERN_ERR "dummy_udc_stop");
-
 	dum->driver = NULL;
 
 	return 0;
@@ -1040,7 +998,6 @@ static void init_dummy_udc_hw(struct dummy *dum)
 {
 	int i;
 
-    printk(KERN_ERR "init_dummy_udc_hw");
 	INIT_LIST_HEAD(&dum->gadget.ep_list);
 	for (i = 0; i < DUMMY_ENDPOINTS; i++) {
 		struct dummy_ep	*ep = &dum->ep[i];
@@ -1075,7 +1032,6 @@ static int dummy_udc_probe(struct platform_device *pdev)
 	struct dummy	*dum;
 	int		rc;
 
-    printk(KERN_ERR "dummy_udc_probe");
 	dum = *((void **)dev_get_platdata(&pdev->dev));
 	dum->gadget.name = gadget_name;
 	dum->gadget.ops = &dummy_ops;
@@ -1259,11 +1215,6 @@ static int dummy_urb_enqueue(
 	unsigned long	flags;
 	int		rc;
 
-	struct dummy_hcd	*dum_hcd2 = hcd_to_dummy_hcd(hcd);
-	struct urbp		*urbp2;
-	int list_size;
-
-    printk(KERN_ERR "dummy_urb_enqueu");
 	urbp = kmalloc(sizeof *urbp, mem_flags);
 	if (!urbp)
 		return -ENOMEM;
@@ -1295,13 +1246,6 @@ static int dummy_urb_enqueue(
 	urb->hcpriv = urbp;
 	if (usb_pipetype(urb->pipe) == PIPE_CONTROL)
 		urb->error_count = 1;		/* mark as a new urb */
-
-    
-    list_size = 0;
-	list_for_each_entry(urbp2, &dum_hcd2->urbp_list, urbp_list) {
-        list_size++;
-	}
-    //printk(KERN_ERR "dummy_urb_enqeueu list size %d", list_size);
 
 	/* kick the scheduler, it'll do the rest */
 	if (!timer_pending(&dum_hcd->timer))
@@ -1346,8 +1290,6 @@ static int dummy_perform_transfer(struct urb *urb, struct dummy_request *req,
 	to_host = usb_pipein(urb->pipe);
 	rbuf = req->req.buf + req->req.actual;
 
-    printk(KERN_ERR "dummy_perform_transfer w kierunku %s\n", (to_host == 0) ? "urzadzenia" : "hosta");
-
 	if (!urb->num_sgs) {
 		ubuf = urb->transfer_buffer + urb->actual_length;
 		if (to_host)
@@ -1356,8 +1298,6 @@ static int dummy_perform_transfer(struct urb *urb, struct dummy_request *req,
 			memcpy(rbuf, ubuf, len);
 		return len;
 	}
-
-    printk(KERN_ERR "dummy_perform_transfer - ten drugi dziwny\n");
 
 	if (!urbp->miter_started) {
 		u32 flags = SG_MITER_ATOMIC;
@@ -1410,7 +1350,6 @@ static int transfer(struct dummy_hcd *dum_hcd, struct urb *urb,
 	struct dummy_request	*req;
 	int			sent = 0;
 
-
 top:
 	/* if there's no request queued, the device is NAKing; return */
 	list_for_each_entry(req, &ep->queue, queue) {
@@ -1422,8 +1361,6 @@ top:
 			if ((urb->stream_id != req->req.stream_id))
 				continue;
 		}
-
-        //printk(KERN_ERR "transfer - cos wyslalem\n");
 
 		/* 1..N packets of ep->ep.maxpacket each ... the last one
 		 * may be short (including zero length).
@@ -1519,9 +1456,6 @@ top:
 
 		/* device side completion --> continuable */
 		if (req->req.status != -EINPROGRESS) {
-
-            //printk(KERN_ERR "transfer - device side completion\n");
-            
 			list_del_init(&req->queue);
 
 			spin_unlock(&dum->lock);
@@ -1843,8 +1777,6 @@ restart:
 		int			type;
 		int			status = -EINPROGRESS;
 
-		printk(KERN_ERR "dummy_timer for urb");
-
 		urb = urbp->urb;
 		if (urb->unlinked)
 			goto return_urb;
@@ -1925,7 +1857,6 @@ restart:
 			 */
 			if (value > 0) {
 				spin_unlock(&dum->lock);
-				printk(KERN_ERR "[dummy_timer] Dum->driver->setup\n");
 				value = dum->driver->setup(&dum->gadget,
 						&setup);
 				spin_lock(&dum->lock);
@@ -2071,9 +2002,11 @@ static inline void
 ss_hub_descriptor(struct usb_hub_descriptor *desc)
 {
 	memset(desc, 0, sizeof *desc);
-	desc->bDescriptorType = 0x2a;
+	desc->bDescriptorType = USB_DT_SS_HUB;
 	desc->bDescLength = 12;
-	desc->wHubCharacteristics = cpu_to_le16(0x0001);
+	desc->wHubCharacteristics = cpu_to_le16(
+			HUB_CHAR_INDV_PORT_LPSM |
+			HUB_CHAR_COMMON_OCPM);
 	desc->bNbrPorts = 1;
 	desc->u.ss.bHubHdrDecLat = 0x04; /* Worst case: 0.4 micro sec*/
 	desc->u.ss.DeviceRemovable = 0xffff;
@@ -2082,9 +2015,11 @@ ss_hub_descriptor(struct usb_hub_descriptor *desc)
 static inline void hub_descriptor(struct usb_hub_descriptor *desc)
 {
 	memset(desc, 0, sizeof *desc);
-	desc->bDescriptorType = 0x29;
+	desc->bDescriptorType = USB_DT_HUB;
 	desc->bDescLength = 9;
-	desc->wHubCharacteristics = cpu_to_le16(0x0001);
+	desc->wHubCharacteristics = cpu_to_le16(
+			HUB_CHAR_INDV_PORT_LPSM |
+			HUB_CHAR_COMMON_OCPM);
 	desc->bNbrPorts = 1;
 	desc->u.hs.DeviceRemovable[0] = 0xff;
 	desc->u.hs.DeviceRemovable[1] = 0xff;
@@ -2159,7 +2094,6 @@ static int dummy_hub_control(
 		break;
 
 	case DeviceRequest | USB_REQ_GET_DESCRIPTOR:
-		printk(KERN_ERR "Odpowiadam na get desri* \n");
 		if (hcd->speed != HCD_USB3)
 			goto error;
 
@@ -2480,8 +2414,6 @@ static int dummy_start(struct usb_hcd *hcd)
 {
 	struct dummy_hcd	*dum_hcd = hcd_to_dummy_hcd(hcd);
 
-    printk(KERN_ERR "dummy_start");
-
 	/*
 	 * MASTER side init ... we emulate a root hub that'll only ever
 	 * talk to one device (the slave side).  Also appears in sysfs,
@@ -2778,7 +2710,7 @@ static int __init init(void)
 		return -EINVAL;
 
 	if (mod_data.num < 1 || mod_data.num > MAX_NUM_UDC) {
-		pr_err("Number of emulated UDC must be in range of 1…%d\n",
+		pr_err("Number of emulated UDC must be in range of 1...%d\n",
 				MAX_NUM_UDC);
 		return -EINVAL;
 	}
