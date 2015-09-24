@@ -128,7 +128,7 @@ static ssize_t store_sockfd(struct device *dev, struct device_attribute *attr,
 	}
 
 	rv = kstrtoint(in, 0, &sockfd);
-	if (rv != 1)
+	if (rv != 0)
 		return -EINVAL;
 
 	if (sockfd != -1) {
