@@ -169,7 +169,7 @@ static int handle_control_request(struct vudc *sdev, struct urb *urb,
 }
 
 /* Adapted from dummy_hcd.c ; caller must hold lock */
-static int transfer(struct vudc* sdev,
+static int transfer(struct vudc *sdev,
 		struct urb *urb, struct vep *ep, int limit)
 {
 	struct vrequest	*req;
@@ -211,7 +211,7 @@ top:
 			ubuf_pos = urb->transfer_buffer + urb->actual_length;
 			rbuf_pos = req->req.buf + req->req.actual;
 
-			if(urb->pipe & USB_DIR_IN)
+			if (urb->pipe & USB_DIR_IN)
 				memcpy(ubuf_pos, rbuf_pos, len);
 			else
 				memcpy(rbuf_pos, ubuf_pos, len);
@@ -257,7 +257,8 @@ top:
 					req->req.status = 0;
 			}
 			if (urb->transfer_buffer_length == urb->actual_length) {
-				if (urb->transfer_flags & URB_ZERO_PACKET && !to_host)
+				if (urb->transfer_flags & URB_ZERO_PACKET &&
+				    !to_host)
 					rescan = 1;
 				else
 					urb->status = 0;
@@ -307,7 +308,7 @@ static void v_timer(unsigned long _vudc)
 		return;
 	}
 	/* is it next frame now? */
-	if (timer->frame_start + msecs_to_jiffies(1) < jiffies) {
+	if (time_after(jiffies, timer->frame_start + msecs_to_jiffies(1))) {
 		timer->frame_limit = total;
 		/* FIXME: how to make it accurate? */
 		timer->frame_start = jiffies;
@@ -323,6 +324,7 @@ static void v_timer(unsigned long _vudc)
 restart:
 	list_for_each_entry_safe(urb_p, tmp, &sdev->urb_q, urb_q) {
 		struct urb *urb = urb_p->urb;
+
 		ep = urb_p->ep;
 		if (urb->unlinked)
 			goto return_urb;
@@ -361,7 +363,8 @@ restart:
 			if (ret > 0) {
 				spin_unlock(&sdev->lock);
 				ret = sdev->driver->setup(&sdev->gadget,
-					(struct usb_ctrlrequest *) urb->setup_packet);
+					(struct usb_ctrlrequest *)
+					urb->setup_packet);
 				spin_lock(&sdev->lock);
 			}
 			if (ret >= 0) {
@@ -379,7 +382,7 @@ restart:
 		switch (ep->type) {
 		case USB_ENDPOINT_XFER_ISOC:
 			/* TODO: support */
-			urb->status = -ENOSYS;
+			urb->status = -EXDEV;
 			break;
 
 		case USB_ENDPOINT_XFER_INT:
@@ -405,7 +408,8 @@ return_urb:
 		if (!urb->unlinked) {
 			v_enqueue_ret_submit(sdev, urb_p);
 		} else {
-			v_enqueue_ret_unlink(sdev, urb_p->seqnum, urb->unlinked);
+			v_enqueue_ret_unlink(sdev, urb_p->seqnum,
+					     urb->unlinked);
 			free_urbp_and_urb(urb_p);
 		}
 		wake_up(&sdev->tx_waitq);
@@ -418,7 +422,8 @@ return_urb:
 	if (list_empty(&sdev->urb_q))
 		timer->state = VUDC_TR_IDLE;
 	else
-		mod_timer(&timer->timer, timer->frame_start + msecs_to_jiffies(1));
+		mod_timer(&timer->timer,
+			  timer->frame_start + msecs_to_jiffies(1));
 
 	spin_unlock_irqrestore(&sdev->lock, flags);
 }
@@ -428,6 +433,7 @@ return_urb:
 void v_init_timer(struct vudc *sdev)
 {
 	struct transfer_timer *t = &sdev->tr_timer;
+
 	setup_timer(&t->timer, v_timer, (unsigned long) sdev);
 	t->state = VUDC_TR_STOPPED;
 }
@@ -437,7 +443,7 @@ void v_start_timer(struct vudc *sdev)
 	struct transfer_timer *t = &sdev->tr_timer;
 
 	dev_dbg(&sdev->plat->dev, "timer start");
-	switch(t->state) {
+	switch (t->state) {
 	case VUDC_TR_RUNNING:
 		return;
 	case VUDC_TR_IDLE:
@@ -455,7 +461,7 @@ void v_kick_timer(struct vudc *sdev, u64 time)
 	struct transfer_timer *t = &sdev->tr_timer;
 
 	dev_dbg(&sdev->plat->dev, "timer kick");
-	switch(t->state) {
+	switch (t->state) {
 	case VUDC_TR_RUNNING:
 		return;
 	case VUDC_TR_IDLE:
