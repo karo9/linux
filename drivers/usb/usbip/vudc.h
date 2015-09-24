@@ -87,7 +87,7 @@ struct transfer_timer {
 struct vudc {
 	struct usb_gadget gadget;
 	struct usb_gadget_driver *driver;
-	struct platform_device *dev;
+	struct platform_device *plat;
 
 	struct usb_device_descriptor *dev_descr;
 
@@ -108,7 +108,7 @@ struct vudc {
 };
 
 struct vudc_device {
-	struct platform_device *dev;
+	struct platform_device *plat;
 	struct list_head list;
 };
 

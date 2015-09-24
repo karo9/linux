@@ -59,18 +59,18 @@ static int __init init(void)
 		goto err_register_udc_driver;
 
 	list_for_each_entry(udc_dev, &vudc_devices, list) {
-		retval = platform_device_add(udc_dev->dev);
+		retval = platform_device_add(udc_dev->plat);
 		if (retval < 0) {
 			list_for_each_entry(udc_dev2, &vudc_devices, list) {
 				if (udc_dev2 == udc_dev)
 					break;
-				platform_device_del(udc_dev2->dev);
+				platform_device_del(udc_dev2->plat);
 			}
 			goto err_add_udc;
 		}
 	}
 	list_for_each_entry(udc_dev, &vudc_devices, list) {
-		if (!platform_get_drvdata(udc_dev->dev)) {
+		if (!platform_get_drvdata(udc_dev->plat)) {
 			/*
 			 * The udc was added successfully but its probe
 			 * function failed for some reason.
@@ -83,7 +83,7 @@ static int __init init(void)
 
 err_probe_udc:
 	list_for_each_entry(udc_dev, &vudc_devices, list)
-		platform_device_del(udc_dev->dev);
+		platform_device_del(udc_dev->plat);
 
 err_add_udc:
 	platform_driver_unregister(&vudc_driver);
@@ -105,7 +105,7 @@ static void __exit cleanup(void)
 
 	list_for_each_entry_safe(udc_dev, udc_dev2, &vudc_devices, list) {
 		list_del(&udc_dev->list);
-		platform_device_unregister(udc_dev->dev);
+		platform_device_unregister(udc_dev->plat);
 		put_vudc_device(udc_dev);
 	}
 	platform_driver_unregister(&vudc_driver);

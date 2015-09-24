@@ -573,8 +573,8 @@ struct vudc_device *alloc_vudc_device(int devid)
 
 	INIT_LIST_HEAD(&udc_dev->list);
 
-	udc_dev->dev = platform_device_alloc(gadget_name, devid);
-	if (!udc_dev->dev) {
+	udc_dev->plat = platform_device_alloc(gadget_name, devid);
+	if (!udc_dev->plat) {
 		kfree(udc_dev);
 		udc_dev = NULL;
 	}
@@ -585,7 +585,7 @@ out:
 
 void put_vudc_device(struct vudc_device *udc_dev)
 {
-	platform_device_put(udc_dev->dev);
+	platform_device_put(udc_dev->plat);
 	kfree(udc_dev);
 }
 
