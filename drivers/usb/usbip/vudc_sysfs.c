@@ -123,7 +123,7 @@ static ssize_t store_sockfd(struct device *dev, struct device_attribute *attr,
 
 	sdev = (struct vudc *) dev_get_drvdata(dev);
 	if (!sdev || !sdev->driver) { /* Don't export what we don't have */
-		dev_err(&sdev->plat->dev, "no device or gadget not bound");
+		dev_err(dev, "no device or gadget not bound");
 		return -ENODEV;
 	}
 
@@ -139,7 +139,7 @@ static ssize_t store_sockfd(struct device *dev, struct device_attribute *attr,
 
 		socket = sockfd_lookup(sockfd, &err);
 		if (!socket) {
-			dev_err(&sdev->plat->dev, "failed to lookup sock");
+			dev_err(dev, "failed to lookup sock");
 			goto err;
 		}
 
