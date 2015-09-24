@@ -11,7 +11,7 @@ static void stub_recv_cmd_unlink(struct vudc *sdev,
 				struct usbip_header *pdu)
 {
 	unsigned long flags;
-	struct urbp* urb_p;
+	struct urbp *urb_p;
 
 	spin_lock_irqsave(&sdev->lock, flags);
 	list_for_each_entry(urb_p, &sdev->urb_q, urb_q) {
@@ -35,7 +35,7 @@ static void stub_recv_cmd_submit(struct vudc *sdev,
 				 struct usbip_header *pdu)
 {
 	int ret;
-	struct urbp* urb_p = alloc_urbp();
+	struct urbp *urb_p = alloc_urbp();
 	u8 address;
 	unsigned long flags;
 
@@ -74,7 +74,7 @@ static void stub_recv_cmd_submit(struct vudc *sdev,
 
 	/* FIXME: more pipe setup to please usbip_common */
 	urb_p->urb->pipe &= ~(11 << 30);
-	switch(urb_p->ep->type) {
+	switch (urb_p->ep->type) {
 	case USB_ENDPOINT_XFER_BULK:
 		urb_p->urb->pipe |= (PIPE_BULK << 30);
 		break;
@@ -113,7 +113,7 @@ static void stub_rx_pdu(struct usbip_device *ud)
 
 	memset(&pdu, 0, sizeof(pdu));
 	ret = usbip_recv(ud->tcp_socket, &pdu, sizeof(pdu));
-	if(ret != sizeof(pdu)) {
+	if (ret != sizeof(pdu)) {
 		usbip_event_add(ud, SDEV_EVENT_ERROR_TCP);
 		return;
 	}
@@ -140,7 +140,6 @@ static void stub_rx_pdu(struct usbip_device *ud)
 		/* TODO - err message */
 		break;
 	}
-	return;
 }
 
 int stub_rx_loop(void *data)
