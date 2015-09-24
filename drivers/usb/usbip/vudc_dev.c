@@ -32,10 +32,10 @@ const char *const ep_name[] = {
 
 	"ep1in-bulk", "ep2out-bulk", "ep3in-iso", "ep4out-iso", "ep5in-int",
 	"ep6in-bulk", "ep7out-bulk", "ep8in-iso", "ep9out-iso", "ep10in-int",
-	"ep11in-bulk", "ep12out-bulk", "ep13in-iso", "ep14out-iso", "ep15in-int",
+	"ep11in-bulk", "ep12out-bulk", "ep13in-iso", "ep14out-iso",
+	"ep15in-int",
 
 	"ep1out-bulk", "ep2in-bulk",
-
 	"ep3out", "ep4in", "ep5out", "ep6out", "ep7in", "ep8out", "ep9in",
 	"ep10out", "ep11out", "ep12in", "ep13out", "ep14in", "ep15out",
 };
@@ -46,7 +46,7 @@ const char *const ep_name[] = {
 
 int alloc_urb_from_cmd(struct urb **urbp, struct usbip_header *pdu, u8 type)
 {
-	struct urb* urb;
+	struct urb *urb;
 
 	if (type == USB_ENDPOINT_XFER_ISOC)
 		urb = usb_alloc_urb(pdu->u.cmd_submit.number_of_packets,
@@ -96,23 +96,19 @@ static void free_urb(struct urb *urb)
 	if (!urb)
 		return;
 
-	if (urb->setup_packet) {
-		kfree(urb->setup_packet);
-		urb->setup_packet = NULL;
-	}
+	kfree(urb->setup_packet);
+	urb->setup_packet = NULL;
 
-	if (urb->transfer_buffer) {
-		kfree(urb->transfer_buffer);
-		urb->transfer_buffer = NULL;
-	}
+	kfree(urb->transfer_buffer);
+	urb->transfer_buffer = NULL;
 
 	usb_free_urb(urb);
-	return;
 }
 
-struct urbp* alloc_urbp(void)
+struct urbp *alloc_urbp(void)
 {
-	struct urbp* urb_p = kmalloc(sizeof(struct urbp), GFP_KERNEL);
+	struct urbp *urb_p = kmalloc(sizeof(struct urbp), GFP_KERNEL);
+
 	if (!urb_p)
 		return urb_p;
 
@@ -122,10 +118,8 @@ struct urbp* alloc_urbp(void)
 	return urb_p;
 }
 
-static void free_urbp(struct urbp* urb_p)
+static void free_urbp(struct urbp *urb_p)
 {
-	if (!urb_p)
-		return;
 	kfree(urb_p);
 }
 
@@ -230,7 +224,7 @@ static int vgadget_pullup(struct usb_gadget *_gadget, int value)
 		vudc->gadget.speed = min_t(u8, USB_SPEED_HIGH,
 					   vudc->driver->max_speed);
 
-		if(vudc->gadget.speed == USB_SPEED_SUPER)
+		if (vudc->gadget.speed == USB_SPEED_SUPER)
 			vudc->ep[0].ep.maxpacket = 9;
 		else
 			vudc->ep[0].ep.maxpacket = 64;
@@ -458,24 +452,27 @@ vep_set_halt_and_wedge(struct usb_ep *_ep, int value, int wedged)
 {
 	struct vep		*ep;
 	struct vudc		*sdev;
+	int retval = 0;
 	/* FIXME should we lock here? */
+	ep = usb_ep_to_vep(_ep);
 	if (!_ep)
 		return -EINVAL;
-	ep = usb_ep_to_vep(_ep);
+
 	sdev = ep_to_vudc(ep);
 	if (!sdev->driver)
 		return -ESHUTDOWN;
+
 	if (!value)
 		ep->halted = ep->wedged = 0;
 	else if (ep->desc && (ep->desc->bEndpointAddress & USB_DIR_IN) &&
 			!list_empty(&ep->queue))
-		return -EAGAIN;
+		retval = -EAGAIN;
 	else {
 		ep->halted = 1;
 		if (wedged)
 			ep->wedged = 1;
 	}
-	return 0;
+	return retval;
 }
 
 static int
@@ -554,6 +551,7 @@ static void vudc_device_reset(struct usbip_device *ud)
 static void vudc_device_unusable(struct usbip_device *ud)
 {
 	unsigned long flags;
+
 	spin_lock_irqsave(&ud->lock, flags);
 	ud->status = SDEV_ST_ERROR;
 	spin_unlock_irqrestore(&ud->lock, flags);
@@ -592,7 +590,7 @@ static int init_vudc_hw(struct vudc *vudc)
 	int i;
 	struct usbip_device *udev = &vudc->udev;
 
-	vudc->dev_descr = kmalloc(sizeof(struct usb_device_descriptor), GFP_KERNEL);
+	vudc->dev_descr = kmalloc(sizeof(*vudc->dev_descr), GFP_KERNEL);
 	if (!vudc->dev_descr)
 		goto nomem_descr;
 	vudc->ep = kcalloc(VIRTUAL_ENDPOINTS, sizeof(*vudc->ep), GFP_KERNEL);
@@ -600,10 +598,10 @@ static int init_vudc_hw(struct vudc *vudc)
 		goto nomem_ep;
 
 	INIT_LIST_HEAD(&vudc->gadget.ep_list);
-	for(i = 0; i < VIRTUAL_ENDPOINTS; ++i) {
+	for (i = 0; i < VIRTUAL_ENDPOINTS; ++i) {
 		struct vep *ep = &vudc->ep[i];
 
-		if(!ep_name[i])
+		if (!ep_name[i])
 			break;
 
 		ep->ep.name = ep_name[i];
@@ -641,9 +639,9 @@ static int init_vudc_hw(struct vudc *vudc)
 	v_init_timer(vudc);
 	return 0;
 
-	nomem_ep:
+nomem_ep:
 		kfree(vudc->dev_descr);
-	nomem_descr:
+nomem_descr:
 		return -ENOMEM;
 }
 
@@ -708,25 +706,9 @@ static int vudc_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static int vudc_suspend(struct platform_device *pdev, pm_message_t state)
-{
-	/* TODO - not yet implemented in USB/IP */
-	dev_warn(&pdev->dev, "suspend not yet implemented");
-	return -ENOSYS;
-}
-
-static int vudc_resume(struct platform_device *pdev)
-{
-	/* TODO - not yet implemented in USB/IP */
-	dev_warn(&pdev->dev, "suspend not yet implemented");
-	return -ENOSYS;
-}
-
 struct platform_driver vudc_driver = {
 	.probe		= vudc_probe,
 	.remove		= vudc_remove,
-	.suspend	= vudc_suspend,
-	.resume		= vudc_resume,
 	.driver		= {
 		.name	= gadget_name,
 	},
