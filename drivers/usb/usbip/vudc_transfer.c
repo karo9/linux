@@ -383,7 +383,11 @@ restart:
 			break;
 
 		case USB_ENDPOINT_XFER_INT:
-			/* TODO: figure out bandwidth guarantees */
+			/*
+			 * TODO: figure out bandwidth guarantees
+			 * for now, give unlimited bandwidth
+			 * */
+			limit += urb->transfer_buffer_length;
 			/* fallthrough */
 		default:
 treat_control_like_bulk:
