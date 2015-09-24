@@ -40,14 +40,10 @@ struct usbip_device_driver *device_driver;
 struct udev *udev_context;
 
 #define copy_descr_attr16(dev, descr, attr)			\
-	do {							\
-		(dev)->attr = le16toh((descr)->attr);		\
-	} while (0)
+		((dev)->attr = le16toh((descr)->attr))		\
 
 #define copy_descr_attr(dev, descr, attr)			\
-	do {							\
-		(dev)->attr = (descr)->attr;		\
-	} while (0)
+		((dev)->attr = (descr)->attr)			\
 
 /* TODO - move to file common to host and device */
 static int32_t read_attr_usbip_status(struct usbip_usb_device *udev)
@@ -89,7 +85,8 @@ int read_usb_vudc_device(struct udev_device *sdev, struct usbip_usb_device *dev)
 	FILE *fd = NULL;
 
 	path = udev_device_get_syspath(sdev);
-	snprintf(filepath, SYSFS_PATH_MAX, "%s/%s", path, VUDC_DEVICE_DESCR_FILE);
+	snprintf(filepath, SYSFS_PATH_MAX, "%s/%s",
+		 path, VUDC_DEVICE_DESCR_FILE);
 	fd = fopen(filepath, "r");
 	if (!fd)
 		return -1;
@@ -125,8 +122,7 @@ static
 struct usbip_exported_device *usbip_exported_device_new(const char *path)
 {
 	struct usbip_exported_device *edev = NULL;
-	int ret;
-	ret = 0;
+	int ret = 0;
 
 	edev = calloc(1, sizeof(struct usbip_exported_device));
 
@@ -317,8 +313,7 @@ struct usbip_exported_device *usbip_device_get_device(int num)
 		edev = list_entry(i, struct usbip_exported_device, node);
 		if (num == cnt)
 			return edev;
-		else
-			cnt++;
+		cnt++;
 	}
 
 	return NULL;

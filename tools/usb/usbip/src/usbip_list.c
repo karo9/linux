@@ -211,8 +211,10 @@ static int list_devices(bool parsable)
 		/* Get device information. */
 		idVendor = udev_device_get_sysattr_value(dev, "idVendor");
 		idProduct = udev_device_get_sysattr_value(dev, "idProduct");
-		bConfValue = udev_device_get_sysattr_value(dev, "bConfigurationValue");
-		bNumIntfs = udev_device_get_sysattr_value(dev, "bNumInterfaces");
+		bConfValue = udev_device_get_sysattr_value(dev,
+				"bConfigurationValue");
+		bNumIntfs = udev_device_get_sysattr_value(dev,
+				"bNumInterfaces");
 		busid = udev_device_get_sysname(dev);
 		if (!idVendor || !idProduct || !bConfValue || !bNumIntfs) {
 			err("problem getting device attributes: %s",

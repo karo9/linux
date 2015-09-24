@@ -102,6 +102,7 @@ static int recv_request_import(int sockfd)
 	struct usbip_exported_device *edev;
 	struct usbip_usb_device pdu_udev;
 	struct list_head *i;
+	struct list_head *dev_list;
 	int found = 0;
 	int error = 0;
 	int rc;
@@ -115,23 +116,17 @@ static int recv_request_import(int sockfd)
 	}
 	PACK_OP_IMPORT_REQUEST(0, &req);
 
-	if (device_flag) {
-		list_for_each(i, &device_driver->edev_list) {
-			edev = list_entry(i, struct usbip_exported_device, node);
-			if (!strncmp(req.busid, edev->udev.busid, SYSFS_BUS_ID_SIZE)) {
-				info("found requested device: %s", req.busid);
-				found = 1;
-				break;
-			}
-		}
-	} else {
-		list_for_each(i, &host_driver->edev_list) {
-			edev = list_entry(i, struct usbip_exported_device, node);
-			if (!strncmp(req.busid, edev->udev.busid, SYSFS_BUS_ID_SIZE)) {
-				info("found requested device: %s", req.busid);
-				found = 1;
-				break;
-			}
+	if (device_flag)
+		dev_list = &device_driver->edev_list;
+	else
+		dev_list = &host_driver->edev_list;
+
+	list_for_each(i, dev_list) {
+		edev = list_entry(i, struct usbip_exported_device, node);
+		if (!strncmp(req.busid, edev->udev.busid, SYSFS_BUS_ID_SIZE)) {
+			info("found requested device: %s", req.busid);
+			found = 1;
+			break;
 		}
 	}
 
@@ -140,7 +135,7 @@ static int recv_request_import(int sockfd)
 		usbip_net_set_nodelay(sockfd);
 
 		/* export device needs a TCP/IP socket descriptor */
-		if(device_flag)
+		if (device_flag)
 			rc = usbip_device_export_device(edev, sockfd);
 		else
 			rc = usbip_host_export_device(edev, sockfd);
@@ -184,18 +179,17 @@ static int send_reply_devlist(int connfd)
 	struct usbip_usb_interface pdu_uinf;
 	struct op_devlist_reply reply;
 	struct list_head *j;
+	struct list_head *dev_list;
 	int rc, i;
 
 	reply.ndev = 0;
 	/* number of exported devices */
-	if(device_flag) {
-		list_for_each(j, &device_driver->edev_list) {
-			reply.ndev += 1;
-		}
-	} else {
-		list_for_each(j, &host_driver->edev_list) {
-			reply.ndev += 1;
-		}
+	if (device_flag)
+		dev_list = &device_driver->edev_list;
+	else
+		dev_list = &host_driver->edev_list;
+	list_for_each(j, dev_list) {
+		reply.ndev += 1;
 	}
 	info("exportable devices: %d", reply.ndev);
 
@@ -212,56 +206,28 @@ static int send_reply_devlist(int connfd)
 		return -1;
 	}
 
-	if(device_flag) {
-		list_for_each(j, &device_driver->edev_list) {
-			edev = list_entry(j, struct usbip_exported_device, node);
-			dump_usb_device(&edev->udev);
-			memcpy(&pdu_udev, &edev->udev, sizeof(pdu_udev));
-			usbip_net_pack_usb_device(1, &pdu_udev);
+	list_for_each(j, dev_list) {
+		edev = list_entry(j, struct usbip_exported_device, node);
+		dump_usb_device(&edev->udev);
+		memcpy(&pdu_udev, &edev->udev, sizeof(pdu_udev));
+		usbip_net_pack_usb_device(1, &pdu_udev);
 
-			rc = usbip_net_send(connfd, &pdu_udev, sizeof(pdu_udev));
-			if (rc < 0) {
-				dbg("usbip_net_send failed: pdu_udev");
-				return -1;
-			}
-
-			for (i = 0; i < edev->udev.bNumInterfaces; i++) {
-				dump_usb_interface(&edev->uinf[i]);
-				memcpy(&pdu_uinf, &edev->uinf[i], sizeof(pdu_uinf));
-				usbip_net_pack_usb_interface(1, &pdu_uinf);
-
-				rc = usbip_net_send(connfd, &pdu_uinf,
-						sizeof(pdu_uinf));
-				if (rc < 0) {
-					err("usbip_net_send failed: pdu_uinf");
-					return -1;
-				}
-			}
+		rc = usbip_net_send(connfd, &pdu_udev, sizeof(pdu_udev));
+		if (rc < 0) {
+			dbg("usbip_net_send failed: pdu_udev");
+			return -1;
 		}
-	} else {
-		list_for_each(j, &host_driver->edev_list) {
-			edev = list_entry(j, struct usbip_exported_device, node);
-			dump_usb_device(&edev->udev);
-			memcpy(&pdu_udev, &edev->udev, sizeof(pdu_udev));
-			usbip_net_pack_usb_device(1, &pdu_udev);
 
-			rc = usbip_net_send(connfd, &pdu_udev, sizeof(pdu_udev));
+		for (i = 0; i < edev->udev.bNumInterfaces; i++) {
+			dump_usb_interface(&edev->uinf[i]);
+			memcpy(&pdu_uinf, &edev->uinf[i], sizeof(pdu_uinf));
+			usbip_net_pack_usb_interface(1, &pdu_uinf);
+
+			rc = usbip_net_send(connfd, &pdu_uinf,
+					sizeof(pdu_uinf));
 			if (rc < 0) {
-				dbg("usbip_net_send failed: pdu_udev");
+				err("usbip_net_send failed: pdu_uinf");
 				return -1;
-			}
-
-			for (i = 0; i < edev->udev.bNumInterfaces; i++) {
-				dump_usb_interface(&edev->uinf[i]);
-				memcpy(&pdu_uinf, &edev->uinf[i], sizeof(pdu_uinf));
-				usbip_net_pack_usb_interface(1, &pdu_uinf);
-
-				rc = usbip_net_send(connfd, &pdu_uinf,
-						sizeof(pdu_uinf));
-				if (rc < 0) {
-					err("usbip_net_send failed: pdu_uinf");
-					return -1;
-				}
 			}
 		}
 	}
@@ -302,7 +268,7 @@ static int recv_pdu(int connfd)
 		return -1;
 	}
 
-	if(device_flag)
+	if (device_flag)
 		ret = usbip_device_refresh_device_list();
 	else
 		ret = usbip_host_refresh_device_list();
@@ -646,7 +612,7 @@ static int do_standalone_mode(int daemonize, int ipv4, int ipv6)
 	info("shutting down " PROGNAME);
 	free(fds);
 
-	if(device_flag)
+	if (device_flag)
 		usbip_device_driver_open();
 	else
 		usbip_host_driver_close();
