@@ -80,7 +80,7 @@ enum tr_state {
 struct transfer_timer {
 	struct timer_list timer;
 	enum tr_state state;
-	u64 frame_start;
+	unsigned long frame_start;
 	int frame_limit;
 };
 
@@ -156,7 +156,7 @@ int stub_rx_loop(void *data);
 
 void v_init_timer(struct vudc *sdev);
 void v_start_timer(struct vudc *sdev);
-void v_kick_timer(struct vudc *sdev, u64 time);
+void v_kick_timer(struct vudc *sdev, unsigned long time);
 void v_stop_timer(struct vudc *sdev);
 
 /* vudc_dev.c */

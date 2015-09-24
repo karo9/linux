@@ -456,7 +456,7 @@ void v_start_timer(struct vudc *sdev)
 	}
 }
 
-void v_kick_timer(struct vudc *sdev, u64 time)
+void v_kick_timer(struct vudc *sdev, unsigned long time)
 {
 	struct transfer_timer *t = &sdev->tr_timer;
 
