@@ -30,7 +30,7 @@ static void setup_ret_unlink_pdu(struct usbip_header *rpdu,
 	rpdu->u.ret_unlink.status = unlink->status;
 }
 
-static int v_send_ret_unlink(struct vudc * sdev, struct stub_unlink *unlink)
+static int v_send_ret_unlink(struct vudc *sdev, struct stub_unlink *unlink)
 {
 	struct msghdr msg;
 	struct kvec iov[1];
@@ -65,7 +65,7 @@ static int v_send_ret_unlink(struct vudc * sdev, struct stub_unlink *unlink)
 
 static int v_send_ret_submit(struct vudc *sdev, struct urbp *urb_p)
 {
-	struct urb* urb = urb_p->urb;
+	struct urb *urb = urb_p->urb;
 	struct usbip_header pdu_header;
 	struct usbip_iso_packet_descriptor *iso_buffer = NULL;
 	struct kvec *iov = NULL;
@@ -110,8 +110,8 @@ static int v_send_ret_submit(struct vudc *sdev, struct urbp *urb_p)
 		iovnum++;
 		txsize += urb->actual_length;
 	} else if (urb_p->type == USB_ENDPOINT_XFER_ISOC &&
-		   usb_pipein(urb->pipe)) {
-	/* FIXME - copypasted from stub_tx, refactor */
+		usb_pipein(urb->pipe)) {
+		/* FIXME - copypasted from stub_tx, refactor */
 		int i;
 
 		for (i = 0; i < urb->number_of_packets; i++) {
@@ -184,8 +184,8 @@ static int v_send_ret(struct vudc *sdev)
 
 		if (ret < 0)
 			return -1;
-		else
-			total_size += ret;
+
+		total_size += ret;
 
 		spin_lock_irqsave(&sdev->lock_tx, flags);
 	}
@@ -197,8 +197,8 @@ static int v_send_ret(struct vudc *sdev)
 
 int stub_tx_loop(void *data)
 {
-	struct usbip_device * udev = (struct usbip_device *) data;
-	struct vudc * sdev = container_of(udev, struct vudc, udev);
+	struct usbip_device *udev = (struct usbip_device *) data;
+	struct vudc *sdev = container_of(udev, struct vudc, udev);
 
 	while (!kthread_should_stop()) {
 		if (usbip_event_happened(&sdev->udev))
