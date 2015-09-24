@@ -21,8 +21,6 @@
 
 #include <net/sock.h>
 
-#define US_MAX_DESCR_LENGTH 1024 * 4
-
 /* called with udc->lock held */
 static ssize_t fetch_descriptor(struct usb_ctrlrequest* req, struct vudc* udc,
 				char *out, ssize_t sz, ssize_t maxsz)
@@ -68,7 +66,7 @@ int descriptor_cache(struct vudc *sdev)
 	struct usb_ctrlrequest req;
 	int ret;
 	int sz = 0;
-	int max_sz = US_MAX_DESCR_LENGTH;
+	int max_sz = PAGE_SIZE;
 
 	if (!sdev || !sdev->driver)
 		return -1;
