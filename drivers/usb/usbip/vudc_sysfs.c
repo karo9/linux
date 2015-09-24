@@ -22,12 +22,12 @@
 #include <net/sock.h>
 
 /* called with udc->lock held */
-static ssize_t fetch_descriptor(struct usb_ctrlrequest* req, struct vudc* udc,
+static ssize_t fetch_descriptor(struct usb_ctrlrequest *req, struct vudc *udc,
 				char *out, ssize_t sz, ssize_t maxsz)
 {
 	struct vrequest *usb_req;
-	int ret;
-	int copysz;
+	ssize_t ret;
+	ssize_t copysz;
 	struct vep *ep0 = usb_ep_to_vep(udc->gadget.ep0);
 
 	if (!udc->driver)	/* No device for export */
@@ -42,7 +42,7 @@ static ssize_t fetch_descriptor(struct usb_ctrlrequest* req, struct vudc* udc,
 	usb_req = list_entry(ep0->queue.prev, struct vrequest, queue);
 	list_del(&(usb_req->queue));
 
-	copysz = min(sz, (ssize_t) usb_req->req.length);
+	copysz = min_t(ssize_t, sz, usb_req->req.length);
 	if (maxsz < copysz) {
 		ret = -1;
 		goto clean_req;
@@ -95,7 +95,7 @@ static ssize_t dev_descr_show(struct device *dev,
 {
 	struct vudc *sdev;
 
-	sdev = (struct vudc*) dev_get_drvdata(dev);
+	sdev = (struct vudc *) dev_get_drvdata(dev);
 	if (!sdev->driver)
 		return -ENODEV;
 	memcpy(out, sdev->dev_descr, sizeof(struct usb_device_descriptor));
@@ -112,22 +112,21 @@ static ssize_t store_sockfd(struct device *dev, struct device_attribute *attr,
 	int err;
 	struct socket *socket;
 
-	vudc = (struct vudc*)dev_get_drvdata(dev);
+	vudc = (struct vudc *) dev_get_drvdata(dev);
 	if (!vudc || !vudc->driver) { /* Don't export what we don't have */
 		dev_err(&vudc->plat->dev, "no device or gadget not bound");
 		return -ENODEV;
 	}
 
-	rv = sscanf(in, "%d", &sockfd);
+	rv = kstrtoint(in, 0, &sockfd);
 	if (rv != 1)
 		return -EINVAL;
 
 	if (sockfd != -1) {
 		spin_lock_irq(&vudc->udev.lock);
 
-		if (vudc->udev.status != SDEV_ST_AVAILABLE) {
+		if (vudc->udev.status != SDEV_ST_AVAILABLE)
 			goto err;
-		}
 
 		socket = sockfd_lookup(sockfd, &err);
 		if (!socket) {
@@ -139,8 +138,10 @@ static ssize_t store_sockfd(struct device *dev, struct device_attribute *attr,
 
 		spin_unlock_irq(&vudc->udev.lock);
 
-		vudc->udev.tcp_rx = kthread_get_run(&stub_rx_loop, &vudc->udev, "vudc_rx");
-		vudc->udev.tcp_tx = kthread_get_run(&stub_tx_loop, &vudc->udev, "vudc_tx");
+		vudc->udev.tcp_rx = kthread_get_run(&stub_rx_loop,
+						    &vudc->udev, "vudc_rx");
+		vudc->udev.tcp_tx = kthread_get_run(&stub_tx_loop,
+						    &vudc->udev, "vudc_tx");
 
 		spin_lock_irq(&vudc->udev.lock);
 		vudc->udev.status = SDEV_ST_USED;
