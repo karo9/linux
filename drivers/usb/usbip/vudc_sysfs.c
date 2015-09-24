@@ -23,10 +23,6 @@
 
 #define US_MAX_DESCR_LENGTH 1024 * 4
 
-#define DEBUG 1
-#define debug_print(...) \
-		do { if (DEBUG) printk(KERN_ERR __VA_ARGS__); } while (0)
-
 /* called with udc->lock held */
 static ssize_t fetch_descriptor(struct usb_ctrlrequest* req, struct vudc* udc,
 				char *out, ssize_t sz, ssize_t maxsz)
@@ -41,10 +37,8 @@ static ssize_t fetch_descriptor(struct usb_ctrlrequest* req, struct vudc* udc,
 	spin_unlock(&udc->lock);
 	ret = udc->driver->setup(&(udc->gadget), req);
 	spin_lock(&udc->lock);
-	if (ret < 0) {
-		debug_print("[vudc] Failed to setup device descriptor request!\n");
+	if (ret < 0)
 		goto exit;
-	}
 
 	/* assuming request queue is empty; request is now on top */
 	usb_req = list_entry(ep0->queue.prev, struct vrequest, queue);
@@ -87,7 +81,7 @@ int descriptor_cache(struct vudc *sdev)
 
 	ret = fetch_descriptor(&req, sdev, (char *) dev_d, max_sz, max_sz);
 	if (ret < 0) {
-		debug_print("[vudc] Could not fetch device descriptor!\n");
+		dev_err(&sdev->plat->dev, "Couldn't fetch device descriptor!");
 		return -1;
 	}
 	sz += ret;
@@ -121,8 +115,10 @@ static ssize_t store_sockfd(struct device *dev, struct device_attribute *attr,
 	struct socket *socket;
 
 	vudc = (struct vudc*)dev_get_drvdata(dev);
-	if (!vudc || !vudc->driver) /* Don't export what we don't have */
+	if (!vudc || !vudc->driver) { /* Don't export what we don't have */
+		dev_err(&vudc->plat->dev, "no device or gadget not bound");
 		return -ENODEV;
+	}
 
 	rv = sscanf(in, "%d", &sockfd);
 	if (rv != 1)
@@ -137,7 +133,7 @@ static ssize_t store_sockfd(struct device *dev, struct device_attribute *attr,
 
 		socket = sockfd_lookup(sockfd, &err);
 		if (!socket) {
-			debug_print("[vudc] Failed to lookup sock");
+			dev_err(&vudc->plat->dev, "failed to lookup sock");
 			goto err;
 		}
 
@@ -179,8 +175,10 @@ static ssize_t usbip_status_show(struct device *dev,
 	struct vudc *sdev = (struct vudc *) dev_get_drvdata(dev);
 	int status;
 
-	if (!sdev)
+	if (!sdev) {
+		dev_err(&sdev->plat->dev, "no device");
 		return -ENODEV;
+	}
 	spin_lock_irq(&sdev->udev.lock);
 	status = sdev->udev.status;
 	spin_unlock_irq(&sdev->udev.lock);

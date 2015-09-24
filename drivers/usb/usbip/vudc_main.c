@@ -37,7 +37,7 @@ static int __init init(void)
 		return -ENODEV;
 
 	if (mod_data.num < 1) {
-		pr_err("Number of emulated UDC must be greater than 1");
+		pr_err("Number of emulated UDC must be no less than 1");
 		return -EINVAL;
 	}
 

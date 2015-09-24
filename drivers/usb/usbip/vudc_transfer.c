@@ -301,7 +301,7 @@ static void v_timer(unsigned long _vudc)
 	spin_lock_irqsave(&sdev->lock, flags);
 
 	total = get_frame_limit(sdev->gadget.speed);
-	if (total < 0) {	/* unknown speed! */
+	if (total < 0) {	/* unknown speed, or not set yet */
 		timer->state = VUDC_TR_IDLE;
 		spin_unlock_irqrestore(&sdev->lock, flags);
 		return;
@@ -436,6 +436,7 @@ void v_start_timer(struct vudc *sdev)
 {
 	struct transfer_timer *t = &sdev->tr_timer;
 
+	dev_dbg(&sdev->plat->dev, "timer start");
 	switch(t->state) {
 	case VUDC_TR_RUNNING:
 		return;
@@ -453,6 +454,7 @@ void v_kick_timer(struct vudc *sdev, u64 time)
 {
 	struct transfer_timer *t = &sdev->tr_timer;
 
+	dev_dbg(&sdev->plat->dev, "timer kick");
 	switch(t->state) {
 	case VUDC_TR_RUNNING:
 		return;
@@ -468,6 +470,8 @@ void v_kick_timer(struct vudc *sdev, u64 time)
 void v_stop_timer(struct vudc *sdev)
 {
 	struct transfer_timer *t = &sdev->tr_timer;
+
 	/* timer itself will take care of stopping */
+	dev_dbg(&sdev->plat->dev, "timer stop");
 	t->state = VUDC_TR_STOPPED;
 }

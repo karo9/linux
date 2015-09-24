@@ -250,4 +250,3 @@ void v_enqueue_ret_submit(struct vudc *sdev, struct urbp *urb_p)
 
 	list_add_tail(&txi->tx_q, &sdev->priv_tx);
 }
-

@@ -22,10 +22,6 @@
 #include "stub.h"
 #include "vudc.h"
 
-#define DEBUG 1
-#define debug_print(...) \
-		do { if (DEBUG) printk(KERN_ERR __VA_ARGS__); } while (0)
-
 /* String constants and ep names */
 
 static const char gadget_name[] = "usbip-vudc";
@@ -515,6 +511,7 @@ static void vudc_shutdown(struct usbip_device *ud)
 	struct vudc *sdev = container_of(ud, struct vudc, udev);
 	unsigned long flags;
 
+	dev_dbg(&sdev->plat->dev, "device shutdown");
 	if (ud->tcp_socket)
 		kernel_sock_shutdown(ud->tcp_socket, SHUT_RDWR);
 
@@ -544,6 +541,7 @@ static void vudc_device_reset(struct usbip_device *ud)
 	struct vudc *sdev = container_of(ud, struct vudc, udev);
 	unsigned long flags;
 
+	dev_dbg(&sdev->plat->dev, "device reset");
 	spin_lock_irqsave(&sdev->lock, flags);
 	stop_activity(sdev);
 	spin_unlock_irqrestore(&sdev->lock, flags);
@@ -683,7 +681,7 @@ static int vudc_probe(struct platform_device *pdev)
 
 	retval = sysfs_create_group(&pdev->dev.kobj, &vudc_attr_group);
 	if (retval) {
-		pr_err("create sysfs files\n");
+		dev_err(&vudc->plat->dev, "create sysfs files\n");
 		goto err_add_udc;
 	}
 
@@ -713,12 +711,14 @@ static int vudc_remove(struct platform_device *pdev)
 static int vudc_suspend(struct platform_device *pdev, pm_message_t state)
 {
 	/* TODO - not yet implemented in USB/IP */
+	dev_warn(&pdev->dev, "suspend not yet implemented");
 	return -ENOSYS;
 }
 
 static int vudc_resume(struct platform_device *pdev)
 {
 	/* TODO - not yet implemented in USB/IP */
+	dev_warn(&pdev->dev, "suspend not yet implemented");
 	return -ENOSYS;
 }
 

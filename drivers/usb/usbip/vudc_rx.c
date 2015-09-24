@@ -53,6 +53,7 @@ static void stub_recv_cmd_submit(struct vudc *sdev,
 	urb_p->ep = find_endpoint(sdev, address);
 	if (!urb_p->ep) {
 		/* we don't know the type, there may be isoc data! */
+		dev_err(&sdev->plat->dev, "request to nonexistent endpoint");
 		spin_unlock_irq(&sdev->lock);
 		usbip_event_add(&sdev->udev, SDEV_EVENT_ERROR_TCP);
 		goto free_urbp;
