@@ -165,7 +165,7 @@ int alloc_urb_from_cmd(struct urb **urbp, struct usbip_header *pdu, u8 type);
 struct urbp *alloc_urbp(void);
 void free_urbp_and_urb(struct urbp *urb_p);
 
-struct vep *find_endpoint(struct vudc *vudc, u8 address);
+struct vep *find_endpoint(struct vudc *sdev, u8 address);
 
 struct vudc_device *alloc_vudc_device(int devid);
 void put_vudc_device(struct vudc_device *udc_dev);

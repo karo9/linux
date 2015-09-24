@@ -170,15 +170,15 @@ static void stop_activity(struct vudc *sdev)
 	}
 }
 
-struct vep *find_endpoint(struct vudc *vudc, u8 address)
+struct vep *find_endpoint(struct vudc *sdev, u8 address)
 {
 	int i;
 
 	if ((address & ~USB_DIR_IN) == 0)
-		return &vudc->ep[0];
+		return &sdev->ep[0];
 
 	for (i = 1; i < VIRTUAL_ENDPOINTS; i++) {
-		struct vep *ep = &vudc->ep[i];
+		struct vep *ep = &sdev->ep[i];
 
 		if (!ep->desc)
 			continue;
@@ -218,16 +218,16 @@ static int vgadget_set_selfpowered(struct usb_gadget *_gadget, int value)
 
 static int vgadget_pullup(struct usb_gadget *_gadget, int value)
 {
-	struct vudc *vudc = usb_gadget_to_vudc(_gadget);
+	struct vudc *sdev = usb_gadget_to_vudc(_gadget);
 
-	if (value && vudc->driver) {
-		vudc->gadget.speed = min_t(u8, USB_SPEED_HIGH,
-					   vudc->driver->max_speed);
+	if (value && sdev->driver) {
+		sdev->gadget.speed = min_t(u8, USB_SPEED_HIGH,
+					   sdev->driver->max_speed);
 
-		if (vudc->gadget.speed == USB_SPEED_SUPER)
-			vudc->ep[0].ep.maxpacket = 9;
+		if (sdev->gadget.speed == USB_SPEED_SUPER)
+			sdev->ep[0].ep.maxpacket = 9;
 		else
-			vudc->ep[0].ep.maxpacket = 64;
+			sdev->ep[0].ep.maxpacket = 64;
 	}
 	return 0;
 }
@@ -235,30 +235,30 @@ static int vgadget_pullup(struct usb_gadget *_gadget, int value)
 static int vgadget_udc_start(struct usb_gadget *g,
 		struct usb_gadget_driver *driver)
 {
-	struct vudc *vudc = usb_gadget_to_vudc(g);
+	struct vudc *sdev = usb_gadget_to_vudc(g);
 	unsigned long flags;
 	int ret;
 
-	vudc->driver = driver;
-	spin_lock_irqsave(&vudc->lock, flags);
-	ret = descriptor_cache(vudc);
-	spin_unlock_irqrestore(&vudc->lock, flags);
+	sdev->driver = driver;
+	spin_lock_irqsave(&sdev->lock, flags);
+	ret = descriptor_cache(sdev);
+	spin_unlock_irqrestore(&sdev->lock, flags);
 	if (ret) {
 		/* FIXME: add correct event */
-		usbip_event_add(&vudc->udev, SDEV_EVENT_ERROR_MALLOC);
+		usbip_event_add(&sdev->udev, SDEV_EVENT_ERROR_MALLOC);
 	}
 	return 0;
 }
 
 static int vgadget_udc_stop(struct usb_gadget *g)
 {
-	struct vudc *vudc = usb_gadget_to_vudc(g);
+	struct vudc *sdev = usb_gadget_to_vudc(g);
 
-	usbip_event_add(&vudc->udev, SDEV_EVENT_REMOVED);
-	usbip_stop_eh(&vudc->udev); /* Wait for eh completion */
-	usbip_start_eh(&vudc->udev);
+	usbip_event_add(&sdev->udev, SDEV_EVENT_REMOVED);
+	usbip_stop_eh(&sdev->udev); /* Wait for eh completion */
+	usbip_start_eh(&sdev->udev);
 
-	vudc->driver = NULL;
+	sdev->driver = NULL;
 	return 0;
 }
 
@@ -391,7 +391,7 @@ static int vep_queue(struct usb_ep *_ep, struct usb_request *_req,
 {
 	struct vep *ep;
 	struct vrequest *req;
-	struct vudc *vudc;
+	struct vudc *sdev;
 	unsigned long flags;
 
 	if (!_ep || !_req)
@@ -399,14 +399,14 @@ static int vep_queue(struct usb_ep *_ep, struct usb_request *_req,
 
 	ep = usb_ep_to_vep(_ep);
 	req = usb_request_to_vrequest(_req);
-	vudc = ep_to_vudc(ep);
+	sdev = ep_to_vudc(ep);
 
-	spin_lock_irqsave(&vudc->lock, flags);
+	spin_lock_irqsave(&sdev->lock, flags);
 	_req->actual = 0;
 	_req->status = -EINPROGRESS;
 
 	list_add_tail(&req->queue, &ep->queue);
-	spin_unlock_irqrestore(&vudc->lock, flags);
+	spin_unlock_irqrestore(&sdev->lock, flags);
 
 	return 0;
 }
@@ -585,43 +585,43 @@ void put_vudc_device(struct vudc_device *udc_dev)
 	kfree(udc_dev);
 }
 
-static int init_vudc_hw(struct vudc *vudc)
+static int init_vudc_hw(struct vudc *sdev)
 {
 	int i;
-	struct usbip_device *udev = &vudc->udev;
+	struct usbip_device *udev = &sdev->udev;
 
-	vudc->dev_descr = kmalloc(sizeof(*vudc->dev_descr), GFP_KERNEL);
-	if (!vudc->dev_descr)
+	sdev->dev_descr = kmalloc(sizeof(*sdev->dev_descr), GFP_KERNEL);
+	if (!sdev->dev_descr)
 		goto nomem_descr;
-	vudc->ep = kcalloc(VIRTUAL_ENDPOINTS, sizeof(*vudc->ep), GFP_KERNEL);
-	if (!vudc->ep)
+	sdev->ep = kcalloc(VIRTUAL_ENDPOINTS, sizeof(*sdev->ep), GFP_KERNEL);
+	if (!sdev->ep)
 		goto nomem_ep;
 
-	INIT_LIST_HEAD(&vudc->gadget.ep_list);
+	INIT_LIST_HEAD(&sdev->gadget.ep_list);
 	for (i = 0; i < VIRTUAL_ENDPOINTS; ++i) {
-		struct vep *ep = &vudc->ep[i];
+		struct vep *ep = &sdev->ep[i];
 
 		if (!ep_name[i])
 			break;
 
 		ep->ep.name = ep_name[i];
 		ep->ep.ops = &vep_ops;
-		list_add_tail(&ep->ep.ep_list, &vudc->gadget.ep_list);
+		list_add_tail(&ep->ep.ep_list, &sdev->gadget.ep_list);
 		ep->halted = ep->wedged = ep->already_seen =
 			ep->setup_stage = 0;
 		usb_ep_set_maxpacket_limit(&ep->ep, ~0);
 		ep->ep.max_streams = 16;
-		ep->gadget = &vudc->gadget;
+		ep->gadget = &sdev->gadget;
 		ep->desc = NULL;
 		INIT_LIST_HEAD(&ep->queue);
 	}
 
 
-	spin_lock_init(&vudc->lock);
-	spin_lock_init(&vudc->lock_tx);
-	INIT_LIST_HEAD(&vudc->urb_q);
-	INIT_LIST_HEAD(&vudc->priv_tx);
-	init_waitqueue_head(&vudc->tx_waitq);
+	spin_lock_init(&sdev->lock);
+	spin_lock_init(&sdev->lock_tx);
+	INIT_LIST_HEAD(&sdev->urb_q);
+	INIT_LIST_HEAD(&sdev->priv_tx);
+	init_waitqueue_head(&sdev->tx_waitq);
 
 	spin_lock_init(&udev->lock);
 	udev->status = SDEV_ST_AVAILABLE;
@@ -633,76 +633,76 @@ static int init_vudc_hw(struct vudc *vudc)
 
 	usbip_start_eh(udev);
 
-	vudc->gadget.ep0 = &vudc->ep[0].ep;
-	list_del_init(&vudc->ep[0].ep.ep_list);
+	sdev->gadget.ep0 = &sdev->ep[0].ep;
+	list_del_init(&sdev->ep[0].ep.ep_list);
 
-	v_init_timer(vudc);
+	v_init_timer(sdev);
 	return 0;
 
 nomem_ep:
-		kfree(vudc->dev_descr);
+		kfree(sdev->dev_descr);
 nomem_descr:
 		return -ENOMEM;
 }
 
-static void cleanup_vudc_hw(struct vudc *vudc)
+static void cleanup_vudc_hw(struct vudc *sdev)
 {
-	usbip_event_add(&vudc->udev, SDEV_EVENT_REMOVED);
-	usbip_stop_eh(&vudc->udev);
-	kfree(vudc->dev_descr);
-	kfree(vudc->ep);
+	usbip_event_add(&sdev->udev, SDEV_EVENT_REMOVED);
+	usbip_stop_eh(&sdev->udev);
+	kfree(sdev->dev_descr);
+	kfree(sdev->ep);
 }
 
 /* platform driver ops */
 
 static int vudc_probe(struct platform_device *pdev)
 {
-	struct vudc *vudc;
+	struct vudc *sdev;
 	int retval = -ENOMEM;
 
-	vudc = kzalloc(sizeof(*vudc), GFP_KERNEL);
-	if (!vudc)
+	sdev = kzalloc(sizeof(*sdev), GFP_KERNEL);
+	if (!sdev)
 		goto out;
 
-	vudc->gadget.name = gadget_name;
-	vudc->gadget.ops = &vgadget_ops;
-	vudc->gadget.max_speed = USB_SPEED_HIGH;
-	vudc->gadget.dev.parent = &pdev->dev;
+	sdev->gadget.name = gadget_name;
+	sdev->gadget.ops = &vgadget_ops;
+	sdev->gadget.max_speed = USB_SPEED_HIGH;
+	sdev->gadget.dev.parent = &pdev->dev;
 
-	retval = init_vudc_hw(vudc);
+	retval = init_vudc_hw(sdev);
 	if (retval)
 		goto err_init_vudc_hw;
 
-	retval = usb_add_gadget_udc(&pdev->dev, &vudc->gadget);
+	retval = usb_add_gadget_udc(&pdev->dev, &sdev->gadget);
 	if (retval < 0)
 		goto err_add_udc;
 
 	retval = sysfs_create_group(&pdev->dev.kobj, &vudc_attr_group);
 	if (retval) {
-		dev_err(&vudc->plat->dev, "create sysfs files\n");
+		dev_err(&sdev->plat->dev, "create sysfs files\n");
 		goto err_add_udc;
 	}
 
-	platform_set_drvdata(pdev, vudc);
+	platform_set_drvdata(pdev, sdev);
 
 	return retval;
 
 err_add_udc:
-	cleanup_vudc_hw(vudc);
+	cleanup_vudc_hw(sdev);
 err_init_vudc_hw:
-	kfree(vudc);
+	kfree(sdev);
 out:
 	return retval;
 }
 
 static int vudc_remove(struct platform_device *pdev)
 {
-	struct vudc *vudc = platform_get_drvdata(pdev);
+	struct vudc *sdev = platform_get_drvdata(pdev);
 
 	sysfs_remove_group(&pdev->dev.kobj, &vudc_attr_group);
-	usb_del_gadget_udc(&vudc->gadget);
-	cleanup_vudc_hw(vudc);
-	kfree(vudc);
+	usb_del_gadget_udc(&sdev->gadget);
+	cleanup_vudc_hw(sdev);
+	kfree(sdev);
 	return 0;
 }
 

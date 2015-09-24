@@ -22,19 +22,19 @@
 #include <net/sock.h>
 
 /* called with udc->lock held */
-static ssize_t fetch_descriptor(struct usb_ctrlrequest *req, struct vudc *udc,
+static ssize_t fetch_descriptor(struct usb_ctrlrequest *req, struct vudc *sdev,
 				char *out, ssize_t sz, ssize_t maxsz)
 {
 	struct vrequest *usb_req;
 	ssize_t ret;
 	ssize_t copysz;
-	struct vep *ep0 = usb_ep_to_vep(udc->gadget.ep0);
+	struct vep *ep0 = usb_ep_to_vep(sdev->gadget.ep0);
 
-	if (!udc->driver)	/* No device for export */
+	if (!sdev->driver)	/* No device for export */
 		return 0;
-	spin_unlock(&udc->lock);
-	ret = udc->driver->setup(&(udc->gadget), req);
-	spin_lock(&udc->lock);
+	spin_unlock(&sdev->lock);
+	ret = sdev->driver->setup(&(sdev->gadget), req);
+	spin_lock(&sdev->lock);
 	if (ret < 0)
 		goto exit;
 
@@ -108,13 +108,13 @@ static ssize_t store_sockfd(struct device *dev, struct device_attribute *attr,
 {
 	int rv;
 	int sockfd = 0;
-	struct vudc *vudc;
+	struct vudc *sdev;
 	int err;
 	struct socket *socket;
 
-	vudc = (struct vudc *) dev_get_drvdata(dev);
-	if (!vudc || !vudc->driver) { /* Don't export what we don't have */
-		dev_err(&vudc->plat->dev, "no device or gadget not bound");
+	sdev = (struct vudc *) dev_get_drvdata(dev);
+	if (!sdev || !sdev->driver) { /* Don't export what we don't have */
+		dev_err(&sdev->plat->dev, "no device or gadget not bound");
 		return -ENODEV;
 	}
 
@@ -123,47 +123,47 @@ static ssize_t store_sockfd(struct device *dev, struct device_attribute *attr,
 		return -EINVAL;
 
 	if (sockfd != -1) {
-		spin_lock_irq(&vudc->udev.lock);
+		spin_lock_irq(&sdev->udev.lock);
 
-		if (vudc->udev.status != SDEV_ST_AVAILABLE)
+		if (sdev->udev.status != SDEV_ST_AVAILABLE)
 			goto err;
 
 		socket = sockfd_lookup(sockfd, &err);
 		if (!socket) {
-			dev_err(&vudc->plat->dev, "failed to lookup sock");
+			dev_err(&sdev->plat->dev, "failed to lookup sock");
 			goto err;
 		}
 
-		vudc->udev.tcp_socket = socket;
+		sdev->udev.tcp_socket = socket;
 
-		spin_unlock_irq(&vudc->udev.lock);
+		spin_unlock_irq(&sdev->udev.lock);
 
-		vudc->udev.tcp_rx = kthread_get_run(&stub_rx_loop,
-						    &vudc->udev, "vudc_rx");
-		vudc->udev.tcp_tx = kthread_get_run(&stub_tx_loop,
-						    &vudc->udev, "vudc_tx");
+		sdev->udev.tcp_rx = kthread_get_run(&stub_rx_loop,
+						    &sdev->udev, "vudc_rx");
+		sdev->udev.tcp_tx = kthread_get_run(&stub_tx_loop,
+						    &sdev->udev, "vudc_tx");
 
-		spin_lock_irq(&vudc->udev.lock);
-		vudc->udev.status = SDEV_ST_USED;
-		spin_unlock_irq(&vudc->udev.lock);
+		spin_lock_irq(&sdev->udev.lock);
+		sdev->udev.status = SDEV_ST_USED;
+		spin_unlock_irq(&sdev->udev.lock);
 
-		spin_lock_irq(&vudc->lock);
-		do_gettimeofday(&vudc->start_time);
-		v_start_timer(vudc);
-		spin_unlock_irq(&vudc->lock);
+		spin_lock_irq(&sdev->lock);
+		do_gettimeofday(&sdev->start_time);
+		v_start_timer(sdev);
+		spin_unlock_irq(&sdev->lock);
 	} else {
-		spin_lock_irq(&vudc->udev.lock);
-		if (vudc->udev.status != SDEV_ST_USED)
+		spin_lock_irq(&sdev->udev.lock);
+		if (sdev->udev.status != SDEV_ST_USED)
 			goto err;
-		spin_unlock_irq(&vudc->udev.lock);
+		spin_unlock_irq(&sdev->udev.lock);
 
-		usbip_event_add(&vudc->udev, SDEV_EVENT_DOWN);
+		usbip_event_add(&sdev->udev, SDEV_EVENT_DOWN);
 	}
 
 	return count;
 
 err:
-	spin_unlock_irq(&vudc->udev.lock);
+	spin_unlock_irq(&sdev->udev.lock);
 	return -EINVAL;
 }
 static DEVICE_ATTR(usbip_sockfd, S_IWUSR, NULL, store_sockfd);
