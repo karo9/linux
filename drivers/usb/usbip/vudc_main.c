@@ -22,14 +22,11 @@
 
 #include "vudc.h"
 
-#define DRIVER_DESC "USB over IP UDC"
 #define DRIVER_VERSION "06 March 2015"
 
-static const char driver_desc[] = DRIVER_DESC;
-
-MODULE_DESCRIPTION(DRIVER_DESC);
+MODULE_DESCRIPTION("USB over IP UDC");
 /* Add your names here */
-MODULE_AUTHOR("Krzysztof Opasiak, Karol Kosik");
+MODULE_AUTHOR("Krzysztof Opasiak, Karol Kosik, Igor Kotrasinski");
 MODULE_LICENSE("GPL");
 
 struct vudc_module_parameters {
