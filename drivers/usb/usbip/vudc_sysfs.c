@@ -166,7 +166,7 @@ static ssize_t store_sockfd(struct device *dev, struct device_attribute *attr,
 			goto err;
 		spin_unlock_irq(&sdev->udev.lock);
 
-		usbip_event_add(&sdev->udev, SDEV_EVENT_DOWN);
+		usbip_event_add(&sdev->udev, VUDC_EVENT_DOWN);
 	}
 
 	return count;

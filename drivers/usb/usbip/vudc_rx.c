@@ -58,7 +58,7 @@ static void stub_recv_cmd_submit(struct vudc *sdev,
 	unsigned long flags;
 
 	if (!urb_p) {
-		usbip_event_add(&sdev->udev, SDEV_EVENT_ERROR_MALLOC);
+		usbip_event_add(&sdev->udev, VUDC_EVENT_ERROR_MALLOC);
 		return;
 	}
 
@@ -73,7 +73,7 @@ static void stub_recv_cmd_submit(struct vudc *sdev,
 		/* we don't know the type, there may be isoc data! */
 		dev_err(&sdev->plat->dev, "request to nonexistent endpoint");
 		spin_unlock_irq(&sdev->lock);
-		usbip_event_add(&sdev->udev, SDEV_EVENT_ERROR_TCP);
+		usbip_event_add(&sdev->udev, VUDC_EVENT_ERROR_TCP);
 		goto free_urbp;
 	}
 	urb_p->type = urb_p->ep->type;
@@ -84,7 +84,7 @@ static void stub_recv_cmd_submit(struct vudc *sdev,
 
 	ret = alloc_urb_from_cmd(&urb_p->urb, pdu, urb_p->ep->type);
 	if (ret) {
-		usbip_event_add(&sdev->udev, SDEV_EVENT_ERROR_MALLOC);
+		usbip_event_add(&sdev->udev, VUDC_EVENT_ERROR_MALLOC);
 		goto free_urbp;
 	}
 
@@ -132,7 +132,7 @@ static void stub_rx_pdu(struct usbip_device *ud)
 	memset(&pdu, 0, sizeof(pdu));
 	ret = usbip_recv(ud->tcp_socket, &pdu, sizeof(pdu));
 	if (ret != sizeof(pdu)) {
-		usbip_event_add(ud, SDEV_EVENT_ERROR_TCP);
+		usbip_event_add(ud, VUDC_EVENT_ERROR_TCP);
 		return;
 	}
 	usbip_header_correct_endian(&pdu, 0);
@@ -141,7 +141,7 @@ static void stub_rx_pdu(struct usbip_device *ud)
 	ret = (ud->status == SDEV_ST_USED);
 	spin_unlock_irq(&ud->lock);
 	if (!ret) {
-		usbip_event_add(ud, SDEV_EVENT_ERROR_TCP);
+		usbip_event_add(ud, VUDC_EVENT_ERROR_TCP);
 		return;
 	}
 

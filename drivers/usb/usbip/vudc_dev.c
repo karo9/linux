@@ -323,8 +323,7 @@ static int vgadget_udc_start(struct usb_gadget *g,
 	ret = descriptor_cache(sdev);
 	spin_unlock_irqrestore(&sdev->lock, flags);
 	if (ret) {
-		/* FIXME: add correct event */
-		usbip_event_add(&sdev->udev, SDEV_EVENT_ERROR_MALLOC);
+		usbip_event_add(&sdev->udev, VUDC_EVENT_ERROR_USB);
 	}
 	return 0;
 }
@@ -333,7 +332,7 @@ static int vgadget_udc_stop(struct usb_gadget *g)
 {
 	struct vudc *sdev = usb_gadget_to_vudc(g);
 
-	usbip_event_add(&sdev->udev, SDEV_EVENT_REMOVED);
+	usbip_event_add(&sdev->udev, VUDC_EVENT_REMOVED);
 	usbip_stop_eh(&sdev->udev); /* Wait for eh completion */
 	usbip_start_eh(&sdev->udev);
 
@@ -727,7 +726,7 @@ nomem_descr:
 
 static void cleanup_vudc_hw(struct vudc *sdev)
 {
-	usbip_event_add(&sdev->udev, SDEV_EVENT_REMOVED);
+	usbip_event_add(&sdev->udev, VUDC_EVENT_REMOVED);
 	usbip_stop_eh(&sdev->udev);
 	kfree(sdev->dev_descr);
 	kfree(sdev->ep);
