@@ -30,8 +30,6 @@
 #include <linux/sysfs.h>
 
 #include "usbip_common.h"
-#include "stub.h"
-
 
 extern const char *const ep_name[];
 extern struct list_head vudc_devices;
@@ -66,6 +64,12 @@ struct urbp {
 	unsigned long seqnum;
 	unsigned type:2; /* for tx, since ep type can change after */
 	unsigned new:1;
+};
+
+struct v_unlink {
+	unsigned long seqnum;
+	struct list_head list;
+	__u32 status;
 };
 
 #define TX_UNLINK 1

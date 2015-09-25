@@ -42,13 +42,13 @@ static void setup_ret_submit_pdu(struct usbip_header *rpdu, struct urbp *urb_p)
 }
 
 static void setup_ret_unlink_pdu(struct usbip_header *rpdu,
-				 struct stub_unlink *unlink)
+				 struct v_unlink *unlink)
 {
 	setup_base_pdu(&rpdu->base, USBIP_RET_UNLINK, unlink->seqnum);
 	rpdu->u.ret_unlink.status = unlink->status;
 }
 
-static int v_send_ret_unlink(struct vudc *sdev, struct stub_unlink *unlink)
+static int v_send_ret_unlink(struct vudc *sdev, struct v_unlink *unlink)
 {
 	struct msghdr msg;
 	struct kvec iov[1];
@@ -235,10 +235,10 @@ int stub_tx_loop(void *data)
 void v_enqueue_ret_unlink(struct vudc *sdev, __u32 seqnum, __u32 status)
 {
 	struct tx_item *txi;
-	struct stub_unlink *unlink;
+	struct v_unlink *unlink;
 
-	txi = kzalloc(sizeof(struct stub_unlink), GFP_ATOMIC);
-	unlink = kzalloc(sizeof(struct stub_unlink), GFP_ATOMIC);
+	txi = kzalloc(sizeof(struct v_unlink), GFP_ATOMIC);
+	unlink = kzalloc(sizeof(struct v_unlink), GFP_ATOMIC);
 	if (!unlink || !txi) {
 		usbip_event_add(&sdev->udev, VDEV_EVENT_ERROR_MALLOC);
 		return;
@@ -257,7 +257,7 @@ void v_enqueue_ret_submit(struct vudc *sdev, struct urbp *urb_p)
 {
 	struct tx_item *txi;
 
-	txi = kzalloc(sizeof(struct stub_unlink), GFP_ATOMIC);
+	txi = kzalloc(sizeof(struct v_unlink), GFP_ATOMIC);
 	if (!txi) {
 		usbip_event_add(&sdev->udev, VDEV_EVENT_ERROR_MALLOC);
 		return;
