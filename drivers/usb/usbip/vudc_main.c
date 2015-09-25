@@ -126,4 +126,3 @@ static void __exit cleanup(void)
 	platform_driver_unregister(&vudc_driver);
 }
 module_exit(cleanup);
-
