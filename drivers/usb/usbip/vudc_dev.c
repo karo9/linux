@@ -620,7 +620,8 @@ static void vudc_device_reset(struct usbip_device *ud)
 	spin_lock_irqsave(&sdev->lock, flags);
 	stop_activity(sdev);
 	spin_unlock_irqrestore(&sdev->lock, flags);
-	usb_gadget_udc_reset(&sdev->gadget, sdev->driver);
+	if (sdev->driver)
+		usb_gadget_udc_reset(&sdev->gadget, sdev->driver);
 	spin_lock_irqsave(&ud->lock, flags);
 	ud->status = SDEV_ST_AVAILABLE;
 	spin_unlock_irqrestore(&ud->lock, flags);
@@ -779,8 +780,8 @@ static int vudc_remove(struct platform_device *pdev)
 	struct vudc *sdev = platform_get_drvdata(pdev);
 
 	sysfs_remove_group(&pdev->dev.kobj, &vudc_attr_group);
-	usb_del_gadget_udc(&sdev->gadget);
 	cleanup_vudc_hw(sdev);
+	usb_del_gadget_udc(&sdev->gadget);
 	kfree(sdev);
 	return 0;
 }
