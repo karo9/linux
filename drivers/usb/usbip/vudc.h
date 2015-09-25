@@ -80,7 +80,7 @@ struct tx_item {
 	unsigned type:1;
 	union {
 		struct urbp *s;
-		struct stub_unlink *u;
+		struct v_unlink *u;
 	};
 };
 
