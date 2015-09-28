@@ -21,8 +21,6 @@
 #include <linux/kthread.h>
 
 #include "usbip_common.h"
-#include "stub.h"
-
 #include "vudc.h"
 
 static void stub_recv_cmd_unlink(struct vudc *sdev,

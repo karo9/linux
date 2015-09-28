@@ -25,7 +25,6 @@
 #include <linux/byteorder/generic.h>
 
 #include "usbip_common.h"
-#include "stub.h"
 #include "vudc.h"
 
 #include <net/sock.h>

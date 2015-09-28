@@ -28,7 +28,6 @@
 #include <linux/byteorder/generic.h>
 
 #include "usbip_common.h"
-#include "stub.h"
 #include "vudc.h"
 
 /* String constants and ep names */

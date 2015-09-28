@@ -21,8 +21,6 @@
 #include <linux/kthread.h>
 
 #include "usbip_common.h"
-#include "stub.h"
-
 #include "vudc.h"
 
 static inline void setup_base_pdu(struct usbip_header_basic *base,
