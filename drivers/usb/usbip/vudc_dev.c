@@ -299,11 +299,7 @@ static int vgadget_pullup(struct usb_gadget *_gadget, int value)
 	if (value && sdev->driver) {
 		sdev->gadget.speed = min_t(u8, USB_SPEED_HIGH,
 					   sdev->driver->max_speed);
-
-		if (sdev->gadget.speed == USB_SPEED_SUPER)
-			sdev->ep[0].ep.maxpacket = 9;
-		else
-			sdev->ep[0].ep.maxpacket = 64;
+		sdev->ep[0].ep.maxpacket = 64;
 	}
 	return 0;
 }
