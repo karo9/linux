@@ -41,6 +41,7 @@
 #include <poll.h>
 
 #include "usbip_host_driver.h"
+#include "usbip_host_common.h"
 #include "usbip_device_driver.h"
 #include "usbip_common.h"
 #include "usbip_network.h"
