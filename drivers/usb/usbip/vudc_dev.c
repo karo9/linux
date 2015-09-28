@@ -349,14 +349,11 @@ static int vep_enable(struct usb_ep *_ep,
 {
 	struct vep *ep;
 	struct vudc *sdev;
-	int retval;
 	unsigned maxp;
 	unsigned long flags;
 
 	ep = to_vep(_ep);
 	sdev = ep_to_vudc(ep);
-	retval = -EINVAL;
-
 
 	if (!_ep || !desc || ep->desc || _ep->name == ep0name
 			|| desc->bDescriptorType != USB_DT_ENDPOINT)
@@ -368,43 +365,14 @@ static int vep_enable(struct usb_ep *_ep,
 	spin_lock_irqsave(&sdev->lock, flags);
 
 	maxp = usb_endpoint_maxp(desc) & 0x7ff;
-
-	switch (usb_endpoint_type(desc)) {
-	case USB_ENDPOINT_XFER_BULK:
-		if (strstr(ep->ep.name, "-iso")
-				|| strstr(ep->ep.name, "-int"))
-			goto done;
-		break;
-	case USB_ENDPOINT_XFER_INT:
-		if (strstr(ep->ep.name, "-iso"))
-			goto done;
-		break;
-	case USB_ENDPOINT_XFER_ISOC:
-		if (strstr(ep->ep.name, "-bulk")
-				|| strstr(ep->ep.name, "-int"))
-			goto done;
-		break;
-	default:
-		goto done;
-	}
-
-	if (desc->bEndpointAddress & USB_DIR_IN) {
-		if (strstr(ep->ep.name, "out"))
-			goto done;
-	} else {
-		if (strstr(ep->ep.name, "in"))
-			goto done;
-	}
-
 	_ep->maxpacket = maxp;
 	ep->desc = desc;
 	ep->type = usb_endpoint_type(desc);
 	ep->halted = ep->wedged = 0;
-	retval = 0;
 
-done:
 	spin_unlock_irqrestore(&sdev->lock, flags);
-	return retval;
+
+	return 0;
 }
 
 static int vep_disable(struct usb_ep *_ep)
