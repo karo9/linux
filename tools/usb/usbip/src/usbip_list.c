@@ -283,7 +283,8 @@ static int list_gadget_devices(bool parsable)
 			continue;
 
 		/* Get device information. */
-		descriptors = udev_device_get_sysattr_value(dev, "dev_descr");
+		descriptors = udev_device_get_sysattr_value(dev,
+				VUDC_DEVICE_DESCR_FILE);
 
 		if (!descriptors) {
 			err("problem getting device attributes: %s",
