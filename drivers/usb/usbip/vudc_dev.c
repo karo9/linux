@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Karol Kosik
+ * Copyright (C) 2015 Karol Kosik <karo9@interia.eu>
  * 		 2015 Samsung Electronics
  * 		 2015 Igor Kotrasinski <i.kotrasinsk@samsung.com>
  *
