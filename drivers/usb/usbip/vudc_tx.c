@@ -72,7 +72,9 @@ static int v_send_ret_unlink(struct vudc *sdev, struct v_unlink *unlink)
 			     1, txsize);
 	if (ret != txsize) {
 		usbip_event_add(&sdev->udev, VUDC_EVENT_ERROR_TCP);
-		return -1;
+		if (ret >= 0)
+			return -EPIPE;
+		return ret;
 	}
 	kfree(unlink);
 
@@ -103,7 +105,7 @@ static int v_send_ret_submit(struct vudc *sdev, struct urbp *urb_p)
 
 	if (!iov) {
 		usbip_event_add(&sdev->udev, VUDC_EVENT_ERROR_MALLOC);
-		return -1;
+		return -ENOMEM;
 	}
 	iovnum = 0;
 
@@ -142,9 +144,10 @@ static int v_send_ret_submit(struct vudc *sdev, struct urbp *urb_p)
 		if (txsize != sizeof(pdu_header) + urb->actual_length) {
 			kfree(iov);
 			usbip_event_add(&sdev->udev, VUDC_EVENT_ERROR_TCP);
-		   return -1;
+		   return -EPIPE;
 		}
 	}
+	/* else - no buffer to send */
 
 	/* 3. setup iso_packet_descriptor */
 	if (urb_p->type == USB_ENDPOINT_XFER_ISOC) {
@@ -155,7 +158,7 @@ static int v_send_ret_submit(struct vudc *sdev, struct urbp *urb_p)
 			usbip_event_add(&sdev->udev,
 					VUDC_EVENT_ERROR_MALLOC);
 			kfree(iov);
-			return -1;
+			return -ENOMEM;
 		}
 
 		iov[iovnum].iov_base = iso_buffer;
@@ -170,7 +173,9 @@ static int v_send_ret_submit(struct vudc *sdev, struct urbp *urb_p)
 		kfree(iov);
 		kfree(iso_buffer);
 		usbip_event_add(&sdev->udev, VUDC_EVENT_ERROR_TCP);
-		return -1;
+		if (ret >= 0)
+			return -EPIPE;
+		return ret;
 	}
 
 	kfree(iov);
@@ -199,7 +204,7 @@ static int v_send_ret(struct vudc *sdev)
 		kfree(txi);
 
 		if (ret < 0)
-			return -1;
+			return ret;
 
 		total_size += ret;
 
