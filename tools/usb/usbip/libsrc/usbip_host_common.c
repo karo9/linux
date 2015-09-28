@@ -101,8 +101,12 @@ struct usbip_exported_device *usbip_exported_device_new(
 		goto err;
 	}
 
-	for (i = 0; i < edev->udev.bNumInterfaces; i++)
+	for (i = 0; i < edev->udev.bNumInterfaces; i++) {
+		/* vudc does not support reading interfaces */
+		if (!hdriver->o.read_interface)
+			break;
 		hdriver->o.read_interface(&edev->udev, i, &edev->uinf[i]);
+	}
 
 	return edev;
 err:
