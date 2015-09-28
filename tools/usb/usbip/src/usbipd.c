@@ -42,6 +42,7 @@
 
 #include "usbip_host_driver.h"
 #include "usbip_host_common.h"
+#include "usbip_device_driver.h"
 #include "usbip_common.h"
 #include "usbip_network.h"
 #include "list.h"
@@ -65,6 +66,11 @@ static const char usbipd_help_string[] =
 	"	-6, --ipv6\n"
 	"		Bind to IPv6. Default is both.\n"
 	"\n"
+	"	-e, --device\n"
+	"		Run in device mode.\n"
+	"		Rather than drive an attached device, create\n"
+	"		a virtual UDC to bind gadgets to.\n"
+	"\n"
 	"	-D, --daemon\n"
 	"		Run as a daemon process.\n"
 	"\n"
@@ -84,6 +90,8 @@ static const char usbipd_help_string[] =
 	"	-v, --version\n"
 	"		Show version.\n";
 
+int device_flag;
+
 static void usbipd_help(void)
 {
 	printf("%s\n", usbipd_help_string);
@@ -95,6 +103,7 @@ static int recv_request_import(int sockfd)
 	struct usbip_exported_device *edev;
 	struct usbip_usb_device pdu_udev;
 	struct list_head *i;
+	struct list_head *dev_list;
 	int found = 0;
 	int error = 0;
 	int rc;
@@ -108,7 +117,12 @@ static int recv_request_import(int sockfd)
 	}
 	PACK_OP_IMPORT_REQUEST(0, &req);
 
-	list_for_each(i, &host_driver->edev_list) {
+	if (device_flag)
+		dev_list = &device_driver->edev_list;
+	else
+		dev_list = &host_driver->edev_list;
+
+	list_for_each(i, dev_list) {
 		edev = list_entry(i, struct usbip_exported_device, node);
 		if (!strncmp(req.busid, edev->udev.busid, SYSFS_BUS_ID_SIZE)) {
 			info("found requested device: %s", req.busid);
@@ -163,11 +177,16 @@ static int send_reply_devlist(int connfd)
 	struct usbip_usb_interface pdu_uinf;
 	struct op_devlist_reply reply;
 	struct list_head *j;
+	struct list_head *dev_list;
 	int rc, i;
 
 	reply.ndev = 0;
 	/* number of exported devices */
-	list_for_each(j, &host_driver->edev_list) {
+	if (device_flag)
+		dev_list = &device_driver->edev_list;
+	else
+		dev_list = &host_driver->edev_list;
+	list_for_each(j, dev_list) {
 		reply.ndev += 1;
 	}
 	info("exportable devices: %d", reply.ndev);
@@ -185,7 +204,7 @@ static int send_reply_devlist(int connfd)
 		return -1;
 	}
 
-	list_for_each(j, &host_driver->edev_list) {
+	list_for_each(j, dev_list) {
 		edev = list_entry(j, struct usbip_exported_device, node);
 		dump_usb_device(&edev->udev);
 		memcpy(&pdu_udev, &edev->udev, sizeof(pdu_udev));
@@ -247,7 +266,11 @@ static int recv_pdu(int connfd)
 		return -1;
 	}
 
-	ret = usbip_host_refresh_device_list();
+	if (device_flag)
+		ret = usbip_device_refresh_device_list();
+	else
+		ret = usbip_host_refresh_device_list();
+
 	if (ret < 0) {
 		dbg("could not refresh device list: %d", ret);
 		return -1;
@@ -492,16 +515,27 @@ static int do_standalone_mode(int daemonize, int ipv4, int ipv6)
 	struct timespec timeout;
 	sigset_t sigmask;
 
-	if (usbip_host_driver_open()) {
-		err("please load " USBIP_CORE_MOD_NAME ".ko and "
-		    USBIP_HOST_DRV_NAME ".ko!");
-		return -1;
+	if (!device_flag) {
+		if (usbip_host_driver_open()) {
+			err("please load " USBIP_CORE_MOD_NAME ".ko and "
+				USBIP_HOST_DRV_NAME ".ko!");
+			return -1;
+		}
+	} else {
+		if (usbip_device_driver_open()) {
+			err("please load " USBIP_CORE_MOD_NAME ".ko and "
+				USBIP_DEVICE_DRV_NAME ".ko!");
+			return -1;
+		}
 	}
 
 	if (daemonize) {
 		if (daemon(0, 0) < 0) {
 			err("daemonizing failed: %s", strerror(errno));
-			usbip_host_driver_close();
+			if (device_flag)
+				usbip_device_driver_close();
+			else
+				usbip_host_driver_close();
 			return -1;
 		}
 		umask(0);
@@ -575,7 +609,11 @@ static int do_standalone_mode(int daemonize, int ipv4, int ipv6)
 
 	info("shutting down " PROGNAME);
 	free(fds);
-	usbip_host_driver_close();
+
+	if (device_flag)
+		usbip_device_driver_open();
+	else
+		usbip_host_driver_close();
 
 	return 0;
 }
@@ -588,6 +626,7 @@ int main(int argc, char *argv[])
 		{ "daemon",   no_argument,       NULL, 'D' },
 		{ "daemon",   no_argument,       NULL, 'D' },
 		{ "debug",    no_argument,       NULL, 'd' },
+		{ "device",   no_argument,       NULL, 'e' },
 		{ "pid",      optional_argument, NULL, 'P' },
 		{ "tcp-port", required_argument, NULL, 't' },
 		{ "help",     no_argument,       NULL, 'h' },
@@ -607,6 +646,7 @@ int main(int argc, char *argv[])
 
 	pid_file = NULL;
 
+	device_flag = 0;
 	usbip_use_stderr = 1;
 	usbip_use_syslog = 0;
 
@@ -615,7 +655,7 @@ int main(int argc, char *argv[])
 
 	cmd = cmd_standalone_mode;
 	for (;;) {
-		opt = getopt_long(argc, argv, "46DdP::t:hv", longopts, NULL);
+		opt = getopt_long(argc, argv, "46DdeP::t:hv", longopts, NULL);
 
 		if (opt == -1)
 			break;
@@ -644,6 +684,9 @@ int main(int argc, char *argv[])
 			break;
 		case 'v':
 			cmd = cmd_version;
+			break;
+		case 'e':
+			device_flag = 1;
 			break;
 		case '?':
 			usbipd_help();
