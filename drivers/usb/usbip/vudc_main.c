@@ -57,20 +57,14 @@ static int __init init(void)
 
 	for (i = 0; i < mod_data.num; i++) {
 		udc_dev = alloc_vudc_device(i);
-		if (!udc_dev) {
-			list_for_each_entry_safe(udc_dev, udc_dev2,
-						 &vudc_devices, list) {
-				list_del(&udc_dev->list);
-				put_vudc_device(udc_dev);
-			}
-			goto out;
-		}
+		if (!udc_dev)
+			goto free_vudc;
 		list_add_tail(&udc_dev->list, &vudc_devices);
 	}
 
 	retval = platform_driver_register(&vudc_driver);
 	if (retval < 0)
-		goto err_register_udc_driver;
+		goto free_vudc;
 
 	list_for_each_entry(udc_dev, &vudc_devices, list) {
 		retval = platform_device_add(udc_dev->plat);
@@ -80,7 +74,7 @@ static int __init init(void)
 					break;
 				platform_device_del(udc_dev2->plat);
 			}
-			goto err_add_udc;
+			goto unreg_driver;
 		}
 	}
 	list_for_each_entry(udc_dev, &vudc_devices, list) {
@@ -90,25 +84,24 @@ static int __init init(void)
 			 * function failed for some reason.
 			 */
 			retval = -EINVAL;
-			goto err_probe_udc;
+			goto del_plat;
 		}
 	}
 	return retval;
 
-err_probe_udc:
+del_plat:
 	list_for_each_entry(udc_dev, &vudc_devices, list)
 		platform_device_del(udc_dev->plat);
 
-err_add_udc:
+unreg_driver:
 	platform_driver_unregister(&vudc_driver);
 
-err_register_udc_driver:
+free_vudc:
 	list_for_each_entry_safe(udc_dev, udc_dev2, &vudc_devices, list) {
 		list_del(&udc_dev->list);
 		put_vudc_device(udc_dev);
 	}
 
-out:
 	return retval;
 }
 module_init(init);
