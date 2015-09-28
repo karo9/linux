@@ -643,9 +643,7 @@ int usbip_recv_iso(struct usbip_device *ud, struct urb *urb)
 			ret);
 		kfree(buff);
 
-		if (ud->side == USBIP_STUB)
-			usbip_event_add(ud, SDEV_EVENT_ERROR_TCP);
-		else if (ud->side == USBIP_VUDC)
+		if (ud->side == USBIP_STUB || ud->side == USBIP_VUDC)
 			usbip_event_add(ud, SDEV_EVENT_ERROR_TCP);
 		else
 			usbip_event_add(ud, VDEV_EVENT_ERROR_TCP);
@@ -667,9 +665,7 @@ int usbip_recv_iso(struct usbip_device *ud, struct urb *urb)
 			"total length of iso packets %d not equal to actual length of buffer %d\n",
 			total_length, urb->actual_length);
 
-		if (ud->side == USBIP_STUB)
-			usbip_event_add(ud, SDEV_EVENT_ERROR_TCP);
-		else if (ud->side == USBIP_VUDC)
+		if (ud->side == USBIP_STUB || ud->side == USBIP_VUDC)
 			usbip_event_add(ud, SDEV_EVENT_ERROR_TCP);
 		else
 			usbip_event_add(ud, VDEV_EVENT_ERROR_TCP);
@@ -748,9 +744,7 @@ int usbip_recv_xbuff(struct usbip_device *ud, struct urb *urb)
 	ret = usbip_recv(ud->tcp_socket, urb->transfer_buffer, size);
 	if (ret != size) {
 		dev_err(&urb->dev->dev, "recv xbuf, %d\n", ret);
-		if (ud->side == USBIP_STUB) {
-			usbip_event_add(ud, SDEV_EVENT_ERROR_TCP);
-		} else if (ud->side == USBIP_VUDC) {
+		if (ud->side == USBIP_STUB || ud->side == USBIP_VUDC) {
 			usbip_event_add(ud, SDEV_EVENT_ERROR_TCP);
 		} else {
 			usbip_event_add(ud, VDEV_EVENT_ERROR_TCP);
