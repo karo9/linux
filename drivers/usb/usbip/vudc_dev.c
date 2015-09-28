@@ -132,6 +132,7 @@ int alloc_urb_from_cmd(struct urb **urbp, struct usbip_header *pdu, u8 type)
 					  GFP_KERNEL);
 	else
 		urb = usb_alloc_urb(0, GFP_KERNEL);
+
 	if (!urb)
 		goto err;
 
@@ -153,10 +154,8 @@ int alloc_urb_from_cmd(struct urb **urbp, struct usbip_header *pdu, u8 type)
 	 * FIXME - we only setup pipe enough for usbip functions
 	 * to behave nicely
 	 */
-	if (pdu->base.direction == USBIP_DIR_IN)
-		urb->pipe |= USB_DIR_IN;
-	else
-		urb->pipe &= (~USB_DIR_IN);
+	urb->pipe |= pdu->base.direction == USBIP_DIR_IN ?
+			USB_DIR_IN : USB_DIR_OUT;
 
 	*urbp = urb;
 	return 0;
