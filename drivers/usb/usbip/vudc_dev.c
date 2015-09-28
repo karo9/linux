@@ -37,6 +37,7 @@ static const char gadget_name[] = "usbip-vudc";
 static const char ep0name[] = "ep0";
 
 
+/* see dummy_hcd.c */
 static const struct {
 	const char *name;
 	const struct usb_ep_caps caps;
