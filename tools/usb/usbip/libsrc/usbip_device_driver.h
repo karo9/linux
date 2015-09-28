@@ -22,7 +22,7 @@
 
 #include <stdint.h>
 #include "usbip_common.h"
-#include "usbip_host_driver.h"
+#include "usbip_host_common.h"
 #include "list.h"
 
 struct usbip_device_driver {
