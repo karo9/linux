@@ -31,8 +31,7 @@
 #define PROGNAME "libusbip"
 
 struct udev *udev_context;
-static const char *udev_subsystem = "platform";
-static const char *driver_name = USBIP_DEVICE_DRV_NAME;
+static const char *udev_subsystem = "udc";
 struct usbip_host_driver *device_driver;
 
 #define copy_descr_attr16(dev, descr, attr)			\
@@ -81,9 +80,11 @@ int read_usb_vudc_device(struct udev_device *sdev, struct usbip_usb_device *dev)
 	struct usb_device_descriptor descr;
 	int ret = 0, i;
 	FILE *fd = NULL;
+	struct udev_device *plat;
 	const char* speed;
 
-	path = udev_device_get_syspath(sdev);
+	plat = udev_device_get_parent(sdev);
+	path = udev_device_get_syspath(plat);
 	snprintf(filepath, SYSFS_PATH_MAX, "%s/%s",
 		 path, VUDC_DEVICE_DESCR_FILE);
 	fd = fopen(filepath, "r");
@@ -120,9 +121,17 @@ int read_usb_vudc_device(struct udev_device *sdev, struct usbip_usb_device *dev)
 	dev->bConfigurationValue = 0;
 	dev->busnum = 0;
 
-	name = udev_device_get_sysname(sdev);
+	name = udev_device_get_sysname(plat);
 	strncpy(dev->busid, name, SYSFS_BUS_ID_SIZE);
 	return 0;
+}
+
+static int is_my_device(struct udev_device *dev)
+{
+	const char *driver;
+
+	driver = udev_device_get_property_value(dev, "USB_UDC_NAME");
+	return driver != NULL && !strcmp(driver, USBIP_DEVICE_DRV_NAME);
 }
 
 int usbip_device_driver_open(void)
@@ -134,9 +143,9 @@ int usbip_device_driver_open(void)
 	device_driver->ndevs = 0;
 	INIT_LIST_HEAD(&device_driver->edev_list);
 	device_driver->udev_subsystem = udev_subsystem;
-	device_driver->name = driver_name;
 	device_driver->o.read_device = read_usb_vudc_device;
 	device_driver->o.read_interface = NULL; /* FIXME */
+	device_driver->o.is_my_device = is_my_device;
 
 	rc = usbip_common_driver_open(device_driver);
 	if (rc < 0)

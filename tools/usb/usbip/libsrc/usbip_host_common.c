@@ -125,7 +125,6 @@ static int refresh_exported_devices(struct usbip_host_driver *hdriver)
 	struct udev_list_entry *devices, *dev_list_entry;
 	struct udev_device *dev;
 	const char *path;
-	const char *driver;
 
 	enumerate = udev_enumerate_new(udev_context);
 	udev_enumerate_add_match_subsystem(enumerate, hdriver->udev_subsystem);
@@ -141,8 +140,7 @@ static int refresh_exported_devices(struct usbip_host_driver *hdriver)
 			continue;
 
 		/* Check whether device uses usbip driver. */
-		driver = udev_device_get_driver(dev);
-		if (driver != NULL && !strcmp(driver, hdriver->name)) {
+		if (hdriver->o.is_my_device(dev)) {
 			edev = usbip_exported_device_new(hdriver, path);
 			if (!edev) {
 				dbg("usbip_exported_device_new failed");

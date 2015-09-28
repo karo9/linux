@@ -19,6 +19,7 @@
 #define __USBIP_HOST_COMMON_H
 
 #include <stdint.h>
+#include <libudev.h>
 #include "list.h"
 #include "usbip_common.h"
 #include "sysfs_utils.h"
@@ -28,6 +29,7 @@ struct usbip_host_driver_ops {
 			   struct usbip_usb_device *dev);
 	int (*read_interface)(struct usbip_usb_device *udev, int i,
 			      struct usbip_usb_interface *uinf);
+	int (*is_my_device)(struct udev_device *udev);
 };
 
 struct usbip_host_driver {
@@ -35,7 +37,6 @@ struct usbip_host_driver {
 	/* list of exported device */
 	struct list_head edev_list;
 	const char *udev_subsystem;
-	const char *name;
 	struct usbip_host_driver_ops o;
 };
 

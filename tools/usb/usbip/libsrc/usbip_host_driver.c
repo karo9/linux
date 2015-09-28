@@ -17,6 +17,7 @@
  */
 
 #include <unistd.h>
+#include <libudev.h>
 
 #include "usbip_host_common.h"
 #include "usbip_host_driver.h"
@@ -26,8 +27,15 @@
 
 struct udev *udev_context;
 static const char *udev_subsystem = "usb";
-static const char *driver_name = USBIP_HOST_DRV_NAME;
 struct usbip_host_driver *host_driver;
+
+static int is_my_device(struct udev_device *dev)
+{
+	const char *driver;
+
+	driver = udev_device_get_driver(dev);
+	return driver != NULL && !strcmp(driver, USBIP_HOST_DRV_NAME);
+}
 
 int usbip_host_driver_open(void)
 {
@@ -38,9 +46,9 @@ int usbip_host_driver_open(void)
 	host_driver->ndevs = 0;
 	INIT_LIST_HEAD(&host_driver->edev_list);
 	host_driver->udev_subsystem = udev_subsystem;
-	host_driver->name = driver_name;
 	host_driver->o.read_device = read_usb_device;
 	host_driver->o.read_interface = read_usb_interface;
+	host_driver->o.is_my_device = is_my_device;
 
 	rc = usbip_common_driver_open(host_driver);
 	if (rc < 0)
