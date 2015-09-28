@@ -51,10 +51,11 @@ static void v_recv_cmd_submit(struct vudc *sdev,
 				 struct usbip_header *pdu)
 {
 	int ret;
-	struct urbp *urb_p = alloc_urbp();
+	struct urbp *urb_p;
 	u8 address;
 	unsigned long flags;
 
+	urb_p = alloc_urbp();
 	if (!urb_p) {
 		usbip_event_add(&sdev->udev, VUDC_EVENT_ERROR_MALLOC);
 		return;
@@ -115,6 +116,7 @@ static void v_recv_cmd_submit(struct vudc *sdev,
 	v_kick_timer(sdev, jiffies);
 	list_add_tail(&urb_p->urb_q, &sdev->urb_q);
 	spin_unlock_irqrestore(&sdev->lock, flags);
+
 	return;
 
 free_urbp:

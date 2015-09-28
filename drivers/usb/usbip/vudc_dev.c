@@ -185,8 +185,9 @@ static void free_urb(struct urb *urb)
 
 struct urbp *alloc_urbp(void)
 {
-	struct urbp *urb_p = kmalloc(sizeof(struct urbp), GFP_KERNEL);
+	struct urbp *urb_p;
 
+	urb_p = kmalloc(sizeof(struct urbp), GFP_KERNEL);
 	if (!urb_p)
 		return urb_p;
 
@@ -215,9 +216,9 @@ void free_urbp_and_urb(struct urbp *urb_p)
 /* called with spinlock held */
 static void nuke(struct vudc *sdev, struct vep *ep)
 {
-	while (!list_empty(&ep->queue)) {
-		struct vrequest	*req;
+	struct vrequest	*req;
 
+	while (!list_empty(&ep->queue)) {
 		req = list_entry(ep->queue.next, struct vrequest, queue);
 		list_del_init(&req->queue);
 		req->req.status = -ESHUTDOWN;
@@ -272,11 +273,9 @@ struct vep *find_endpoint(struct vudc *sdev, u8 address)
 static int vgadget_get_frame(struct usb_gadget *_gadget)
 {
 	struct timeval now;
-	struct vudc *sdev;
+	struct vudc *sdev = usb_gadget_to_vudc(_gadget);
 
-	sdev = usb_gadget_to_vudc(_gadget);
 	do_gettimeofday(&now);
-
 	return ((now.tv_sec - sdev->start_time.tv_sec) * 1000 +
 			(now.tv_usec - sdev->start_time.tv_usec) / 1000)
 			% 0x7FF;
@@ -284,9 +283,8 @@ static int vgadget_get_frame(struct usb_gadget *_gadget)
 
 static int vgadget_set_selfpowered(struct usb_gadget *_gadget, int value)
 {
-	struct vudc *sdev;
+	struct vudc *sdev = usb_gadget_to_vudc(_gadget);
 
-	sdev = usb_gadget_to_vudc(_gadget);
 	if (value)
 		sdev->devstatus |= (1 << USB_DEVICE_SELF_POWERED);
 	else
@@ -527,8 +525,8 @@ static int vep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 static int
 vep_set_halt_and_wedge(struct usb_ep *_ep, int value, int wedged)
 {
-	struct vep		*ep;
-	struct vudc		*sdev;
+	struct vep *ep;
+	struct vudc *sdev;
 	int retval = 0;
 	/* FIXME should we lock here? */
 	ep = to_vep(_ep);
@@ -667,6 +665,7 @@ static int init_vudc_hw(struct vudc *sdev)
 {
 	int i;
 	struct usbip_device *udev = &sdev->udev;
+	struct vep *ep;
 
 	sdev->ep = kcalloc(VIRTUAL_ENDPOINTS, sizeof(*sdev->ep), GFP_KERNEL);
 	if (!sdev->ep)
@@ -674,7 +673,7 @@ static int init_vudc_hw(struct vudc *sdev)
 
 	INIT_LIST_HEAD(&sdev->gadget.ep_list);
 	for (i = 0; i < VIRTUAL_ENDPOINTS; ++i) {
-		struct vep *ep = &sdev->ep[i];
+		ep = &sdev->ep[i];
 
 		if (!ep_info[i].name)
 			break;
@@ -691,7 +690,6 @@ static int init_vudc_hw(struct vudc *sdev)
 		ep->desc = NULL;
 		INIT_LIST_HEAD(&ep->queue);
 	}
-
 
 	spin_lock_init(&sdev->lock);
 	spin_lock_init(&sdev->lock_tx);

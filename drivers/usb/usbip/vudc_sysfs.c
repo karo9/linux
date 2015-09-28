@@ -101,9 +101,8 @@ int descriptor_cache(struct vudc *sdev)
 static ssize_t dev_descr_show(struct device *dev,
 			       struct device_attribute *attr, char *out)
 {
-	struct vudc *sdev;
+	struct vudc *sdev = (struct vudc *) dev_get_drvdata(dev);
 
-	sdev = (struct vudc *) dev_get_drvdata(dev);
 	if (!sdev->driver)
 		return -ENODEV;
 	memcpy(out, &sdev->dev_descr, sizeof(struct usb_device_descriptor));
@@ -116,11 +115,10 @@ static ssize_t store_sockfd(struct device *dev, struct device_attribute *attr,
 {
 	int rv;
 	int sockfd = 0;
-	struct vudc *sdev;
+	struct vudc *sdev = (struct vudc *) dev_get_drvdata(dev);
 	int err;
 	struct socket *socket;
 
-	sdev = (struct vudc *) dev_get_drvdata(dev);
 	if (!sdev || !sdev->driver) { /* Don't export what we don't have */
 		dev_err(dev, "no device or gadget not bound");
 		return -ENODEV;

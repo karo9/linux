@@ -66,8 +66,8 @@ static int handle_control_request(struct vudc *sdev, struct urb *urb,
 				  struct usb_ctrlrequest *setup,
 				  int *status)
 {
-	struct vep		*ep2;
-	int			ret_val = 1;
+	struct vep	*ep2;
+	int		ret_val = 1;
 	unsigned	w_index;
 	unsigned	w_value;
 
