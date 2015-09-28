@@ -18,6 +18,7 @@
  */
 
 #include <fcntl.h>
+#include <string.h>
 #include <linux/usb/ch9.h>
 
 #include <unistd.h>
@@ -39,14 +40,47 @@ struct usbip_host_driver *device_driver;
 #define copy_descr_attr(dev, descr, attr)			\
 		((dev)->attr = (descr)->attr)			\
 
+static struct {
+	enum usb_device_speed speed;
+	const char *name;
+} speed_names[] = {
+	{
+		.speed = USB_SPEED_UNKNOWN,
+		.name = "UNKNOWN",
+	},
+	{
+		.speed = USB_SPEED_LOW,
+		.name = "low-speed",
+	},
+	{
+		.speed = USB_SPEED_FULL,
+		.name = "full-speed",
+	},
+	{
+		.speed = USB_SPEED_HIGH,
+		.name = "high-speed",
+	},
+	{
+		.speed = USB_SPEED_WIRELESS,
+		.name = "wireless",
+	},
+	{
+		.speed = USB_SPEED_SUPER,
+		.name = "super-speed",
+	},
+};
+
+#define SPEED_NUMBER 6
+
 static
 int read_usb_vudc_device(struct udev_device *sdev, struct usbip_usb_device *dev)
 {
 	const char *path, *name;
 	char filepath[SYSFS_PATH_MAX];
 	struct usb_device_descriptor descr;
-	int ret = 0;
+	int ret = 0, i;
 	FILE *fd = NULL;
+	const char* speed;
 
 	path = udev_device_get_syspath(sdev);
 	snprintf(filepath, SYSFS_PATH_MAX, "%s/%s",
@@ -69,8 +103,16 @@ int read_usb_vudc_device(struct udev_device *sdev, struct usbip_usb_device *dev)
 
 	strncpy(dev->path, path, SYSFS_PATH_MAX);
 
-	/* FIXME - depends on speed of vudc, constify / export */
-	dev->speed = USB_SPEED_HIGH;
+	dev->speed = USB_SPEED_UNKNOWN;
+	speed = udev_device_get_sysattr_value(sdev, "current_speed");
+	if (speed) {
+		for (i = 0; i < SPEED_NUMBER; i++) {
+			if (!strcmp(speed_names[i].name, speed)) {
+				dev->speed = speed_names[i].speed;
+				break;
+			}
+		}
+	}
 
 	/* Only used for user output, little sense to output them in general */
 	dev->bNumInterfaces = 0;
