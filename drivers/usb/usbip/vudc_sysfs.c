@@ -105,7 +105,7 @@ static ssize_t dev_descr_show(struct device *dev,
 
 	if (!sdev->driver)
 		return -ENODEV;
-	memcpy(out, &sdev->dev_descr, sizeof(struct usb_device_descriptor));
+	memcpy(out, &sdev->dev_descr, sizeof(sdev->dev_descr));
 	return sizeof(struct usb_device_descriptor);
 }
 static DEVICE_ATTR_RO(dev_descr);
