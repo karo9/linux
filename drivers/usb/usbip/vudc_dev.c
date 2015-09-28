@@ -715,13 +715,15 @@ static int vudc_probe(struct platform_device *pdev)
 	retval = sysfs_create_group(&pdev->dev.kobj, &vudc_attr_group);
 	if (retval) {
 		dev_err(&sdev->plat->dev, "create sysfs files\n");
-		goto err_add_udc;
+		goto err_sysfs;
 	}
 
 	platform_set_drvdata(pdev, sdev);
 
 	return retval;
 
+err_sysfs:
+	usb_del_gadget_udc(&sdev->gadget);
 err_add_udc:
 	cleanup_vudc_hw(sdev);
 err_init_vudc_hw:
@@ -735,8 +737,8 @@ static int vudc_remove(struct platform_device *pdev)
 	struct vudc *sdev = platform_get_drvdata(pdev);
 
 	sysfs_remove_group(&pdev->dev.kobj, &vudc_attr_group);
-	cleanup_vudc_hw(sdev);
 	usb_del_gadget_udc(&sdev->gadget);
+	cleanup_vudc_hw(sdev);
 	kfree(sdev);
 	return 0;
 }
