@@ -25,7 +25,7 @@
 #define VHCI_STATE_PATH "/var/run/vhci_hcd"
 #endif
 
-#define VUDC_DEVICE_DESCR_FILE "dev_descr"
+#define VUDC_DEVICE_DESCR_FILE "dev_desc"
 
 /* kernel module names */
 #define USBIP_CORE_MOD_NAME	"usbip-core"

@@ -70,7 +70,7 @@ exit:
 /* called with sdev->lock held */
 int descriptor_cache(struct vudc *sdev)
 {
-	struct usb_device_descriptor *dev_d = &sdev->dev_descr;
+	struct usb_device_descriptor *dev_d = &sdev->dev_desc;
 	struct usb_ctrlrequest req;
 	int ret;
 	int sz = 0;
@@ -98,17 +98,17 @@ int descriptor_cache(struct vudc *sdev)
 /*
  * Fetches device descriptor from the gadget driver.
  */
-static ssize_t dev_descr_show(struct device *dev,
+static ssize_t dev_desc_show(struct device *dev,
 			       struct device_attribute *attr, char *out)
 {
 	struct vudc *sdev = (struct vudc *) dev_get_drvdata(dev);
 
 	if (!sdev->driver)
 		return -ENODEV;
-	memcpy(out, &sdev->dev_descr, sizeof(sdev->dev_descr));
+	memcpy(out, &sdev->dev_desc, sizeof(sdev->dev_desc));
 	return sizeof(struct usb_device_descriptor);
 }
-static DEVICE_ATTR_RO(dev_descr);
+static DEVICE_ATTR_RO(dev_desc);
 
 static ssize_t store_sockfd(struct device *dev, struct device_attribute *attr,
 		     const char *in, size_t count)
@@ -193,7 +193,7 @@ static ssize_t usbip_status_show(struct device *dev,
 static DEVICE_ATTR_RO(usbip_status);
 
 static struct attribute *dev_attrs[] = {
-	&dev_attr_dev_descr.attr,
+	&dev_attr_dev_desc.attr,
 	&dev_attr_usbip_sockfd.attr,
 	&dev_attr_usbip_status.attr,
 	NULL,
