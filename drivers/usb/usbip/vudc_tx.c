@@ -194,14 +194,18 @@ static int v_send_ret(struct vudc *sdev)
 
 	spin_lock_irqsave(&sdev->lock_tx, flags);
 	while (!list_empty(&sdev->priv_tx)) {
-		txi = list_entry(sdev->priv_tx.next, struct tx_item, tx_q);
+		txi = list_first_entry(&sdev->priv_tx, struct tx_item, tx_q);
 		list_del_init(&txi->tx_q);
 		spin_unlock_irqrestore(&sdev->lock_tx, flags);
 
-		if (txi->type == TX_SUBMIT)
+		switch (txi->type) {
+		case TX_SUBMIT:
 			ret = v_send_ret_submit(sdev, txi->s);
-		else
+			break;
+		case TX_UNLINK:
 			ret = v_send_ret_unlink(sdev, txi->u);
+			break;
+		}
 		kfree(txi);
 
 		if (ret < 0)
@@ -221,11 +225,14 @@ int v_tx_loop(void *data)
 {
 	struct usbip_device *udev = (struct usbip_device *) data;
 	struct vudc *sdev = container_of(udev, struct vudc, udev);
+	int ret;
 
 	while (!kthread_should_stop()) {
 		if (usbip_event_happened(&sdev->udev))
 			break;
-		if (v_send_ret(sdev) < 0)
+		if ((ret = v_send_ret(sdev)) < 0)
+			dev_err(&sdev->plat->dev,
+				 "v_tx exit with error %d", ret);
 			break;
 		wait_event_interruptible(sdev->tx_waitq,
 						(!list_empty(&sdev->priv_tx) ||
