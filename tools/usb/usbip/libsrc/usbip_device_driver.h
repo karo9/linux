@@ -25,19 +25,11 @@
 #include "usbip_host_common.h"
 #include "list.h"
 
-struct usbip_device_driver {
-	int ndevs;
-	/* list of exported device */
-	struct list_head edev_list;
-};
-
-extern struct usbip_device_driver *device_driver;
+extern struct usbip_host_driver *device_driver;
 
 int usbip_device_driver_open(void);
 void usbip_device_driver_close(void);
-
 int usbip_device_refresh_device_list(void);
-int usbip_device_export_device(struct usbip_exported_device *edev, int sockfd);
 struct usbip_exported_device *usbip_device_get_device(int num);
 
 #endif /* __USBIP_DEVICE_DRIVER_H */

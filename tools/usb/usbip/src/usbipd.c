@@ -135,10 +135,7 @@ static int recv_request_import(int sockfd)
 		usbip_net_set_nodelay(sockfd);
 
 		/* export device needs a TCP/IP socket descriptor */
-		if (device_flag)
-			rc = usbip_device_export_device(edev, sockfd);
-		else
-			rc = usbip_host_export_device(edev, sockfd);
+		rc = usbip_export_device(edev, sockfd);
 		if (rc < 0)
 			error = 1;
 	} else {
