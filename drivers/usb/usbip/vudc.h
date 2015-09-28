@@ -129,12 +129,12 @@ extern const struct attribute_group vudc_attr_group;
 
 /* visible everywhere */
 
-static inline struct vep *usb_ep_to_vep(struct usb_ep *_ep)
+static inline struct vep *to_vep(struct usb_ep *_ep)
 {
 	return container_of(_ep, struct vep, ep);
 }
 
-static inline struct vrequest *usb_request_to_vrequest(
+static inline struct vrequest *to_vrequest(
 	struct usb_request *_req)
 {
 	return container_of(_req, struct vrequest, req);

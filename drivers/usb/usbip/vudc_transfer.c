@@ -335,7 +335,7 @@ static void v_timer(unsigned long _vudc)
 	}
 
 	list_for_each_entry(_ep, &sdev->gadget.ep_list, ep_list) {
-		ep = usb_ep_to_vep(_ep);
+		ep = to_vep(_ep);
 		ep->already_seen = 0;
 	}
 

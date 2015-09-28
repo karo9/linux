@@ -37,7 +37,7 @@ static ssize_t fetch_descriptor(struct usb_ctrlrequest *req, struct vudc *sdev,
 	struct vrequest *usb_req;
 	ssize_t ret;
 	ssize_t copysz;
-	struct vep *ep0 = usb_ep_to_vep(sdev->gadget.ep0);
+	struct vep *ep0 = to_vep(sdev->gadget.ep0);
 
 	if (!sdev->driver)	/* No device for export */
 		return 0;

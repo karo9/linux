@@ -360,7 +360,7 @@ static int vep_enable(struct usb_ep *_ep,
 	unsigned maxp;
 	unsigned long flags;
 
-	ep = usb_ep_to_vep(_ep);
+	ep = to_vep(_ep);
 	sdev = ep_to_vudc(ep);
 	retval = -EINVAL;
 
@@ -420,7 +420,7 @@ static int vep_disable(struct usb_ep *_ep)
 	struct vudc *sdev;
 	unsigned long flags;
 
-	ep = usb_ep_to_vep(_ep);
+	ep = to_vep(_ep);
 	sdev = ep_to_vudc(ep);
 	if (!_ep || !ep->desc || _ep->name == ep0name)
 		return -EINVAL;
@@ -441,7 +441,7 @@ static struct usb_request *vep_alloc_request(struct usb_ep *_ep,
 
 	if (!_ep)
 		return NULL;
-	ep = usb_ep_to_vep(_ep);
+	ep = to_vep(_ep);
 
 	req = kzalloc(sizeof(*req), mem_flags);
 	if (!req)
@@ -460,7 +460,7 @@ static void vep_free_request(struct usb_ep *_ep, struct usb_request *_req)
 		WARN_ON(1);
 		return;
 	}
-	req = usb_request_to_vrequest(_req);
+	req = to_vrequest(_req);
 	kfree(req);
 }
 
@@ -475,8 +475,8 @@ static int vep_queue(struct usb_ep *_ep, struct usb_request *_req,
 	if (!_ep || !_req)
 		return -EINVAL;
 
-	ep = usb_ep_to_vep(_ep);
-	req = usb_request_to_vrequest(_req);
+	ep = to_vep(_ep);
+	req = to_vrequest(_req);
 	sdev = ep_to_vudc(ep);
 
 	spin_lock_irqsave(&sdev->lock, flags);
@@ -501,8 +501,8 @@ static int vep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 	if (!_ep || !_req)
 		return retval;
 
-	ep = usb_ep_to_vep(_ep);
-	req = usb_request_to_vrequest(_req);
+	ep = to_vep(_ep);
+	req = to_vrequest(_req);
 	sdev = req->sdev;
 
 	if (!sdev->driver)
@@ -532,7 +532,7 @@ vep_set_halt_and_wedge(struct usb_ep *_ep, int value, int wedged)
 	struct vudc		*sdev;
 	int retval = 0;
 	/* FIXME should we lock here? */
-	ep = usb_ep_to_vep(_ep);
+	ep = to_vep(_ep);
 	if (!_ep)
 		return -EINVAL;
 
