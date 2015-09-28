@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2015 Karol Kosik
  * 		 2015 Samsung Electronics
+ * 		 2015 Igor Kotrasinski <i.kotrasinsk@samsung.com>
  * Based on tools/usb/usbip/libsrc/usbip_host_driver.h by matt mooney and
  * Takahiro Hirofuchi
  * This program is free software; you can redistribute it and/or modify
