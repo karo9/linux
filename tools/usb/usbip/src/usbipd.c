@@ -41,6 +41,7 @@
 #include <poll.h>
 
 #include "usbip_host_driver.h"
+#include "usbip_host_common.h"
 #include "usbip_common.h"
 #include "usbip_network.h"
 #include "list.h"
@@ -121,7 +122,7 @@ static int recv_request_import(int sockfd)
 		usbip_net_set_nodelay(sockfd);
 
 		/* export device needs a TCP/IP socket descriptor */
-		rc = usbip_host_export_device(edev, sockfd);
+		rc = usbip_export_device(edev, sockfd);
 		if (rc < 0)
 			error = 1;
 	} else {
