@@ -146,9 +146,9 @@ static ssize_t store_sockfd(struct device *dev, struct device_attribute *attr,
 
 		spin_unlock_irq(&sdev->udev.lock);
 
-		sdev->udev.tcp_rx = kthread_get_run(&stub_rx_loop,
+		sdev->udev.tcp_rx = kthread_get_run(&v_rx_loop,
 						    &sdev->udev, "vudc_rx");
-		sdev->udev.tcp_tx = kthread_get_run(&stub_tx_loop,
+		sdev->udev.tcp_tx = kthread_get_run(&v_tx_loop,
 						    &sdev->udev, "vudc_tx");
 
 		spin_lock_irq(&sdev->udev.lock);

@@ -211,7 +211,7 @@ static int v_send_ret(struct vudc *sdev)
 }
 
 
-int stub_tx_loop(void *data)
+int v_tx_loop(void *data)
 {
 	struct usbip_device *udev = (struct usbip_device *) data;
 	struct vudc *sdev = container_of(udev, struct vudc, udev);

@@ -23,7 +23,7 @@
 #include "usbip_common.h"
 #include "vudc.h"
 
-static void stub_recv_cmd_unlink(struct vudc *sdev,
+static void v_recv_cmd_unlink(struct vudc *sdev,
 				struct usbip_header *pdu)
 {
 	unsigned long flags;
@@ -47,7 +47,7 @@ static void stub_recv_cmd_unlink(struct vudc *sdev,
 	spin_unlock_irqrestore(&sdev->lock, flags);
 }
 
-static void stub_recv_cmd_submit(struct vudc *sdev,
+static void v_recv_cmd_submit(struct vudc *sdev,
 				 struct usbip_header *pdu)
 {
 	int ret;
@@ -121,7 +121,7 @@ free_urbp:
 	free_urbp_and_urb(urb_p);
 }
 
-static void stub_rx_pdu(struct usbip_device *ud)
+static void v_rx_pdu(struct usbip_device *ud)
 {
 	int ret;
 	struct usbip_header pdu;
@@ -145,11 +145,11 @@ static void stub_rx_pdu(struct usbip_device *ud)
 
 	switch (pdu.base.command) {
 	case USBIP_CMD_UNLINK:
-		stub_recv_cmd_unlink(sdev, &pdu);
+		v_recv_cmd_unlink(sdev, &pdu);
 		break;
 
 	case USBIP_CMD_SUBMIT:
-		stub_recv_cmd_submit(sdev, &pdu);
+		v_recv_cmd_submit(sdev, &pdu);
 		break;
 
 	default:
@@ -158,14 +158,14 @@ static void stub_rx_pdu(struct usbip_device *ud)
 	}
 }
 
-int stub_rx_loop(void *data)
+int v_rx_loop(void *data)
 {
 	struct usbip_device *ud = data;
 
 	while (!kthread_should_stop()) {
 		if (usbip_event_happened(ud))
 			break;
-		stub_rx_pdu(ud);
+		v_rx_pdu(ud);
 	}
 
 	return 0;

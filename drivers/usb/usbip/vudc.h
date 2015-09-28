@@ -156,13 +156,13 @@ int descriptor_cache(struct vudc *sdev);
 
 /* vudc_tx.c */
 
-int stub_tx_loop(void *data);
+int v_tx_loop(void *data);
 void v_enqueue_ret_unlink(struct vudc *sdev, __u32 seqnum, __u32 status);
 void v_enqueue_ret_submit(struct vudc *sdev, struct urbp *urb_p);
 
 /* vudc_rx.c */
 
-int stub_rx_loop(void *data);
+int v_rx_loop(void *data);
 
 /* vudc_transfer.c */
 
