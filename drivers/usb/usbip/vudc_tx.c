@@ -230,10 +230,11 @@ int v_tx_loop(void *data)
 	while (!kthread_should_stop()) {
 		if (usbip_event_happened(&sdev->udev))
 			break;
-		if ((ret = v_send_ret(sdev)) < 0)
+		if ((ret = v_send_ret(sdev)) < 0) {
 			dev_err(&sdev->plat->dev,
 				"v_tx exit with error %d", ret);
 			break;
+		}
 		wait_event_interruptible(sdev->tx_waitq,
 						(!list_empty(&sdev->priv_tx) ||
 						kthread_should_stop()));
