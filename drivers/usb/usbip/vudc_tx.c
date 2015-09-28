@@ -232,7 +232,7 @@ int v_tx_loop(void *data)
 			break;
 		if ((ret = v_send_ret(sdev)) < 0)
 			dev_err(&sdev->plat->dev,
-				 "v_tx exit with error %d", ret);
+				"v_tx exit with error %d", ret);
 			break;
 		wait_event_interruptible(sdev->tx_waitq,
 						(!list_empty(&sdev->priv_tx) ||
