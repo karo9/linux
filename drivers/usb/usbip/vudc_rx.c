@@ -23,7 +23,7 @@
 #include "usbip_common.h"
 #include "vudc.h"
 
-static void v_recv_cmd_unlink(struct vudc *sdev,
+static int v_recv_cmd_unlink(struct vudc *sdev,
 				struct usbip_header *pdu)
 {
 	unsigned long flags;
@@ -37,7 +37,7 @@ static void v_recv_cmd_unlink(struct vudc *sdev,
 		urb_p->seqnum = pdu->base.seqnum;
 		v_kick_timer(sdev, jiffies);
 		spin_unlock_irqrestore(&sdev->lock, flags);
-		return;
+		return 0;
 	}
 	/* Not found, completed / not queued */
 	spin_lock(&sdev->lock_tx);
@@ -45,12 +45,14 @@ static void v_recv_cmd_unlink(struct vudc *sdev,
 	wake_up(&sdev->tx_waitq);
 	spin_unlock(&sdev->lock_tx);
 	spin_unlock_irqrestore(&sdev->lock, flags);
+
+	return 0;
 }
 
-static void v_recv_cmd_submit(struct vudc *sdev,
+static int v_recv_cmd_submit(struct vudc *sdev,
 				 struct usbip_header *pdu)
 {
-	int ret;
+	int ret = 0;
 	struct urbp *urb_p;
 	u8 address;
 	unsigned long flags;
@@ -58,7 +60,7 @@ static void v_recv_cmd_submit(struct vudc *sdev,
 	urb_p = alloc_urbp();
 	if (!urb_p) {
 		usbip_event_add(&sdev->udev, VUDC_EVENT_ERROR_MALLOC);
-		return;
+		return -ENOMEM;
 	}
 
 	/* base.ep is pipeendpoint(pipe) */
@@ -73,6 +75,7 @@ static void v_recv_cmd_submit(struct vudc *sdev,
 		dev_err(&sdev->plat->dev, "request to nonexistent endpoint");
 		spin_unlock_irq(&sdev->lock);
 		usbip_event_add(&sdev->udev, VUDC_EVENT_ERROR_TCP);
+		ret = -EPIPE;
 		goto free_urbp;
 	}
 	urb_p->type = urb_p->ep->type;
@@ -84,6 +87,7 @@ static void v_recv_cmd_submit(struct vudc *sdev,
 	ret = alloc_urb_from_cmd(&urb_p->urb, pdu, urb_p->ep->type);
 	if (ret) {
 		usbip_event_add(&sdev->udev, VUDC_EVENT_ERROR_MALLOC);
+		ret = -ENOMEM;
 		goto free_urbp;
 	}
 
@@ -106,10 +110,10 @@ static void v_recv_cmd_submit(struct vudc *sdev,
 		break;
 	}
 
-	if (usbip_recv_xbuff(&sdev->udev, urb_p->urb) < 0)
+	if ((ret = usbip_recv_xbuff(&sdev->udev, urb_p->urb)) < 0)
 		goto free_urbp;
 
-	if (usbip_recv_iso(&sdev->udev, urb_p->urb) < 0)
+	if ((ret = usbip_recv_iso(&sdev->udev, urb_p->urb)) < 0)
 		goto free_urbp;
 
 	spin_lock_irqsave(&sdev->lock, flags);
@@ -117,13 +121,14 @@ static void v_recv_cmd_submit(struct vudc *sdev,
 	list_add_tail(&urb_p->urb_q, &sdev->urb_q);
 	spin_unlock_irqrestore(&sdev->lock, flags);
 
-	return;
+	return 0;
 
 free_urbp:
 	free_urbp_and_urb(urb_p);
+	return ret;
 }
 
-static void v_rx_pdu(struct usbip_device *ud)
+static int v_rx_pdu(struct usbip_device *ud)
 {
 	int ret;
 	struct usbip_header pdu;
@@ -133,7 +138,9 @@ static void v_rx_pdu(struct usbip_device *ud)
 	ret = usbip_recv(ud->tcp_socket, &pdu, sizeof(pdu));
 	if (ret != sizeof(pdu)) {
 		usbip_event_add(ud, VUDC_EVENT_ERROR_TCP);
-		return;
+		if (ret >= 0)
+			return -EPIPE;
+		return ret;
 	}
 	usbip_header_correct_endian(&pdu, 0);
 
@@ -142,33 +149,37 @@ static void v_rx_pdu(struct usbip_device *ud)
 	spin_unlock_irq(&ud->lock);
 	if (!ret) {
 		usbip_event_add(ud, VUDC_EVENT_ERROR_TCP);
-		return;
+		return -EBUSY;
 	}
 
 	switch (pdu.base.command) {
 	case USBIP_CMD_UNLINK:
-		v_recv_cmd_unlink(sdev, &pdu);
+		ret = v_recv_cmd_unlink(sdev, &pdu);
 		break;
-
 	case USBIP_CMD_SUBMIT:
-		v_recv_cmd_submit(sdev, &pdu);
+		ret = v_recv_cmd_submit(sdev, &pdu);
 		break;
-
 	default:
-		/* TODO - err message */
+		dev_err(&sdev->plat->dev, "rx: unknown command");
 		break;
 	}
+	return ret;
 }
 
 int v_rx_loop(void *data)
 {
 	struct usbip_device *ud = data;
+	struct vudc *sdev = container_of(ud, struct vudc, udev);
+	int ret = 0;
 
 	while (!kthread_should_stop()) {
 		if (usbip_event_happened(ud))
 			break;
-		v_rx_pdu(ud);
+		if ((ret = v_rx_pdu(ud)) < 0) {
+			dev_err(&sdev->plat->dev,
+				"v_rx exit with error %d", ret);
+			break;
+		}
 	}
-
-	return 0;
+	return ret;
 }
