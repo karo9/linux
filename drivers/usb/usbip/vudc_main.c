@@ -24,7 +24,7 @@
 
 #define DRIVER_VERSION "06 March 2015"
 
-MODULE_DESCRIPTION("USB over IP UDC");
+MODULE_DESCRIPTION("USB over IP Device Controller");
 /* Add your names here */
 MODULE_AUTHOR("Krzysztof Opasiak, Karol Kosik, Igor Kotrasinski");
 MODULE_LICENSE("GPL");
