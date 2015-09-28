@@ -102,7 +102,7 @@ struct vudc {
 	struct usb_gadget_driver *driver;
 	struct platform_device *plat;
 
-	struct usb_device_descriptor *dev_descr;
+	struct usb_device_descriptor dev_descr;
 
 	struct usbip_device udev;
 	struct transfer_timer tr_timer;

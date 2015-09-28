@@ -669,9 +669,6 @@ static int init_vudc_hw(struct vudc *sdev)
 	int i;
 	struct usbip_device *udev = &sdev->udev;
 
-	sdev->dev_descr = kmalloc(sizeof(*sdev->dev_descr), GFP_KERNEL);
-	if (!sdev->dev_descr)
-		goto nomem_descr;
 	sdev->ep = kcalloc(VIRTUAL_ENDPOINTS, sizeof(*sdev->ep), GFP_KERNEL);
 	if (!sdev->ep)
 		goto nomem_ep;
@@ -720,8 +717,6 @@ static int init_vudc_hw(struct vudc *sdev)
 	return 0;
 
 nomem_ep:
-		kfree(sdev->dev_descr);
-nomem_descr:
 		return -ENOMEM;
 }
 
@@ -729,7 +724,6 @@ static void cleanup_vudc_hw(struct vudc *sdev)
 {
 	usbip_event_add(&sdev->udev, VUDC_EVENT_REMOVED);
 	usbip_stop_eh(&sdev->udev);
-	kfree(sdev->dev_descr);
 	kfree(sdev->ep);
 }
 
