@@ -32,7 +32,6 @@
 #include "usbip_common.h"
 
 extern const char *const ep_name[];
-extern struct list_head vudc_devices;
 
 extern struct platform_driver vudc_driver;
 extern const struct usb_ep_ops vep_ops;
