@@ -51,7 +51,7 @@ static int get_frame_limit(enum usb_device_speed speed)
 
 /*
  * handle_control_request() - handles all control transfers
- * @sdev: pointer to vudc
+ * @cdev: pointer to vudc
  * @urb: the urb request to handle
  * @setup: pointer to the setup data for a USB device control
  *	 request
@@ -63,7 +63,7 @@ static int get_frame_limit(enum usb_device_speed speed)
  *
  * Adapted from drivers/usb/gadget/udc/dummy_hcd.c
  */
-static int handle_control_request(struct vudc *sdev, struct urb *urb,
+static int handle_control_request(struct vudc *cdev, struct urb *urb,
 				  struct usb_ctrlrequest *setup,
 				  int *status)
 {
@@ -78,7 +78,7 @@ static int handle_control_request(struct vudc *sdev, struct urb *urb,
 	case USB_REQ_SET_ADDRESS:
 		if (setup->bRequestType != Dev_Request)
 			break;
-		sdev->address = w_value;
+		cdev->address = w_value;
 		ret_val = 0;
 		*status = 0;
 		break;
@@ -89,25 +89,25 @@ static int handle_control_request(struct vudc *sdev, struct urb *urb,
 			case USB_DEVICE_REMOTE_WAKEUP:
 				break;
 			case USB_DEVICE_B_HNP_ENABLE:
-				sdev->gadget.b_hnp_enable = 1;
+				cdev->gadget.b_hnp_enable = 1;
 				break;
 			case USB_DEVICE_A_HNP_SUPPORT:
-				sdev->gadget.a_hnp_support = 1;
+				cdev->gadget.a_hnp_support = 1;
 				break;
 			case USB_DEVICE_A_ALT_HNP_SUPPORT:
-				sdev->gadget.a_alt_hnp_support = 1;
+				cdev->gadget.a_alt_hnp_support = 1;
 				break;
 			default:
 				ret_val = -EOPNOTSUPP;
 			}
 			if (ret_val == 0) {
-				sdev->devstatus |= (1 << w_value);
+				cdev->devstatus |= (1 << w_value);
 				*status = 0;
 			}
 		} else if (setup->bRequestType == Ep_Request) {
 			/* endpoint halt */
-			ep2 = find_endpoint(sdev, w_index);
-			if (!ep2 || ep2->ep.name == sdev->ep[0].ep.name) {
+			ep2 = find_endpoint(cdev, w_index);
+			if (!ep2 || ep2->ep.name == cdev->ep[0].ep.name) {
 				ret_val = -EOPNOTSUPP;
 				break;
 			}
@@ -134,12 +134,12 @@ static int handle_control_request(struct vudc *sdev, struct urb *urb,
 				break;
 			}
 			if (ret_val == 0) {
-				sdev->devstatus &= ~(1 << w_value);
+				cdev->devstatus &= ~(1 << w_value);
 				*status = 0;
 			}
 		} else if (setup->bRequestType == Ep_Request) {
 			/* endpoint halt */
-			ep2 = find_endpoint(sdev, w_index);
+			ep2 = find_endpoint(cdev, w_index);
 			if (!ep2) {
 				ret_val = -EOPNOTSUPP;
 				break;
@@ -163,7 +163,7 @@ static int handle_control_request(struct vudc *sdev, struct urb *urb,
 			buf = (char *)urb->transfer_buffer;
 			if (urb->transfer_buffer_length > 0) {
 				if (setup->bRequestType == Ep_InRequest) {
-					ep2 = find_endpoint(sdev, w_index);
+					ep2 = find_endpoint(cdev, w_index);
 					if (!ep2) {
 						ret_val = -EOPNOTSUPP;
 						break;
@@ -171,7 +171,7 @@ static int handle_control_request(struct vudc *sdev, struct urb *urb,
 					buf[0] = ep2->halted;
 				} else if (setup->bRequestType ==
 					   Dev_InRequest) {
-					buf[0] = (u8)sdev->devstatus;
+					buf[0] = (u8)cdev->devstatus;
 				} else
 					buf[0] = 0;
 			}
@@ -188,7 +188,7 @@ static int handle_control_request(struct vudc *sdev, struct urb *urb,
 }
 
 /* Adapted from dummy_hcd.c ; caller must hold lock */
-static int transfer(struct vudc *sdev,
+static int transfer(struct vudc *cdev,
 		struct urb *urb, struct vep *ep, int limit)
 {
 	struct vrequest	*req;
@@ -288,9 +288,9 @@ top:
 		if (req->req.status != -EINPROGRESS) {
 
 			list_del_init(&req->queue);
-			spin_unlock(&sdev->lock);
+			spin_unlock(&cdev->lock);
 			usb_gadget_giveback_request(&ep->ep, &req->req);
-			spin_lock(&sdev->lock);
+			spin_lock(&cdev->lock);
 
 			/* requests might have been unlinked... */
 			rescan = 1;
@@ -309,8 +309,8 @@ top:
 
 static void v_timer(unsigned long _vudc)
 {
-	struct vudc *sdev = (struct vudc *) _vudc;
-	struct transfer_timer *timer = &sdev->tr_timer;
+	struct vudc *cdev = (struct vudc *) _vudc;
+	struct transfer_timer *timer = &cdev->tr_timer;
 	struct urbp *urb_p, *tmp;
 	unsigned long flags;
 	struct usb_ep *_ep;
@@ -318,12 +318,12 @@ static void v_timer(unsigned long _vudc)
 	int ret = 0;
 	int total, limit;
 
-	spin_lock_irqsave(&sdev->lock, flags);
+	spin_lock_irqsave(&cdev->lock, flags);
 
-	total = get_frame_limit(sdev->gadget.speed);
+	total = get_frame_limit(cdev->gadget.speed);
 	if (total < 0) {	/* unknown speed, or not set yet */
 		timer->state = VUDC_TR_IDLE;
-		spin_unlock_irqrestore(&sdev->lock, flags);
+		spin_unlock_irqrestore(&cdev->lock, flags);
 		return;
 	}
 	/* is it next frame now? */
@@ -335,13 +335,13 @@ static void v_timer(unsigned long _vudc)
 		total = timer->frame_limit;
 	}
 
-	list_for_each_entry(_ep, &sdev->gadget.ep_list, ep_list) {
+	list_for_each_entry(_ep, &cdev->gadget.ep_list, ep_list) {
 		ep = to_vep(_ep);
 		ep->already_seen = 0;
 	}
 
 restart:
-	list_for_each_entry_safe(urb_p, tmp, &sdev->urb_q, urb_q) {
+	list_for_each_entry_safe(urb_p, tmp, &cdev->urb_q, urb_q) {
 		struct urb *urb = urb_p->urb;
 
 		ep = urb_p->ep;
@@ -362,7 +362,7 @@ restart:
 		if (ep->already_seen)
 			continue;
 		ep->already_seen = 1;
-		if (ep == &sdev->ep[0] && urb_p->new) {
+		if (ep == &cdev->ep[0] && urb_p->new) {
 			ep->setup_stage = 1;
 			urb_p->new = 0;
 		}
@@ -371,20 +371,20 @@ restart:
 			goto return_urb;
 		}
 
-		if (ep == &sdev->ep[0] && ep->setup_stage) {
+		if (ep == &cdev->ep[0] && ep->setup_stage) {
 			/* TODO - flush any stale requests */
 			ep->setup_stage = 0;
 			ep->halted = 0;
 
-			ret = handle_control_request(sdev, urb,
+			ret = handle_control_request(cdev, urb,
 				(struct usb_ctrlrequest *) urb->setup_packet,
 				(&urb->status));
 			if (ret > 0) {
-				spin_unlock(&sdev->lock);
-				ret = sdev->driver->setup(&sdev->gadget,
+				spin_unlock(&cdev->lock);
+				ret = cdev->driver->setup(&cdev->gadget,
 					(struct usb_ctrlrequest *)
 					urb->setup_packet);
-				spin_lock(&sdev->lock);
+				spin_lock(&cdev->lock);
 			}
 			if (ret >= 0) {
 				/* no delays (max 64kb data stage) */
@@ -413,7 +413,7 @@ restart:
 			/* fallthrough */
 		default:
 treat_control_like_bulk:
-			total -= transfer(sdev, urb, ep, limit);
+			total -= transfer(cdev, urb, ep, limit);
 		}
 		if (urb->status == -EINPROGRESS)
 			continue;
@@ -422,64 +422,64 @@ return_urb:
 		if (ep)
 			ep->already_seen = ep->setup_stage = 0;
 
-		spin_lock(&sdev->lock_tx);
+		spin_lock(&cdev->lock_tx);
 		list_del(&urb_p->urb_q);
 		if (!urb->unlinked) {
-			v_enqueue_ret_submit(sdev, urb_p);
+			v_enqueue_ret_submit(cdev, urb_p);
 		} else {
-			v_enqueue_ret_unlink(sdev, urb_p->seqnum,
+			v_enqueue_ret_unlink(cdev, urb_p->seqnum,
 					     urb->unlinked);
 			free_urbp_and_urb(urb_p);
 		}
-		wake_up(&sdev->tx_waitq);
-		spin_unlock(&sdev->lock_tx);
+		wake_up(&cdev->tx_waitq);
+		spin_unlock(&cdev->lock_tx);
 
 		goto restart;
 	}
 
 	/* TODO - also wait on empty usb_request queues? */
-	if (list_empty(&sdev->urb_q))
+	if (list_empty(&cdev->urb_q))
 		timer->state = VUDC_TR_IDLE;
 	else
 		mod_timer(&timer->timer,
 			  timer->frame_start + msecs_to_jiffies(1));
 
-	spin_unlock_irqrestore(&sdev->lock, flags);
+	spin_unlock_irqrestore(&cdev->lock, flags);
 }
 
-/* All timer functions are run with sdev->lock held */
+/* All timer functions are run with cdev->lock held */
 
-void v_init_timer(struct vudc *sdev)
+void v_init_timer(struct vudc *cdev)
 {
-	struct transfer_timer *t = &sdev->tr_timer;
+	struct transfer_timer *t = &cdev->tr_timer;
 
-	setup_timer(&t->timer, v_timer, (unsigned long) sdev);
+	setup_timer(&t->timer, v_timer, (unsigned long) cdev);
 	t->state = VUDC_TR_STOPPED;
 }
 
-void v_start_timer(struct vudc *sdev)
+void v_start_timer(struct vudc *cdev)
 {
-	struct transfer_timer *t = &sdev->tr_timer;
+	struct transfer_timer *t = &cdev->tr_timer;
 
-	dev_dbg(&sdev->plat->dev, "timer start");
+	dev_dbg(&cdev->plat->dev, "timer start");
 	switch (t->state) {
 	case VUDC_TR_RUNNING:
 		return;
 	case VUDC_TR_IDLE:
-		return v_kick_timer(sdev, jiffies);
+		return v_kick_timer(cdev, jiffies);
 	case VUDC_TR_STOPPED:
 		t->state = VUDC_TR_IDLE;
 		t->frame_start = jiffies;
-		t->frame_limit = get_frame_limit(sdev->gadget.speed);
-		return v_kick_timer(sdev, jiffies);
+		t->frame_limit = get_frame_limit(cdev->gadget.speed);
+		return v_kick_timer(cdev, jiffies);
 	}
 }
 
-void v_kick_timer(struct vudc *sdev, unsigned long time)
+void v_kick_timer(struct vudc *cdev, unsigned long time)
 {
-	struct transfer_timer *t = &sdev->tr_timer;
+	struct transfer_timer *t = &cdev->tr_timer;
 
-	dev_dbg(&sdev->plat->dev, "timer kick");
+	dev_dbg(&cdev->plat->dev, "timer kick");
 	switch (t->state) {
 	case VUDC_TR_RUNNING:
 		return;
@@ -492,11 +492,11 @@ void v_kick_timer(struct vudc *sdev, unsigned long time)
 	}
 }
 
-void v_stop_timer(struct vudc *sdev)
+void v_stop_timer(struct vudc *cdev)
 {
-	struct transfer_timer *t = &sdev->tr_timer;
+	struct transfer_timer *t = &cdev->tr_timer;
 
 	/* timer itself will take care of stopping */
-	dev_dbg(&sdev->plat->dev, "timer stop");
+	dev_dbg(&cdev->plat->dev, "timer stop");
 	t->state = VUDC_TR_STOPPED;
 }
