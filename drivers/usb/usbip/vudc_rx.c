@@ -73,7 +73,7 @@ static int v_recv_cmd_submit(struct vudc *cdev,
 	urb_p->ep = find_endpoint(cdev, address);
 	if (!urb_p->ep) {
 		/* we don't know the type, there may be isoc data! */
-		dev_err(&cdev->plat->dev, "request to nonexistent endpoint");
+		dev_err(&cdev->pdev->dev, "request to nonexistent endpoint");
 		spin_unlock_irq(&cdev->lock);
 		usbip_event_add(&cdev->ud, VUDC_EVENT_ERROR_TCP);
 		ret = -EPIPE;

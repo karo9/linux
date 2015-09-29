@@ -88,7 +88,7 @@ int descriptor_cache(struct vudc *cdev)
 
 	ret = fetch_descriptor(&req, cdev, (char *) dev_d, max_sz, max_sz);
 	if (ret < 0) {
-		dev_err(&cdev->plat->dev, "Couldn't fetch device descriptor!");
+		dev_err(&cdev->pdev->dev, "Couldn't fetch device descriptor!");
 		return -1;
 	}
 	sz += ret;
@@ -182,7 +182,7 @@ static ssize_t usbip_status_show(struct device *dev,
 	int status;
 
 	if (!cdev) {
-		dev_err(&cdev->plat->dev, "no device");
+		dev_err(&cdev->pdev->dev, "no device");
 		return -ENODEV;
 	}
 	spin_lock_irq(&cdev->ud.lock);

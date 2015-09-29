@@ -548,7 +548,7 @@ static void vudc_shutdown(struct usbip_device *ud)
 	struct vudc *cdev = container_of(ud, struct vudc, ud);
 	unsigned long flags;
 
-	dev_dbg(&cdev->plat->dev, "device shutdown");
+	dev_dbg(&cdev->pdev->dev, "device shutdown");
 	if (ud->tcp_socket)
 		kernel_sock_shutdown(ud->tcp_socket, SHUT_RDWR);
 
@@ -578,7 +578,7 @@ static void vudc_device_reset(struct usbip_device *ud)
 	struct vudc *cdev = container_of(ud, struct vudc, ud);
 	unsigned long flags;
 
-	dev_dbg(&cdev->plat->dev, "device reset");
+	dev_dbg(&cdev->pdev->dev, "device reset");
 	spin_lock_irqsave(&cdev->lock, flags);
 	stop_activity(cdev);
 	spin_unlock_irqrestore(&cdev->lock, flags);
@@ -610,8 +610,8 @@ struct vudc_device *alloc_vudc_device(int devid)
 
 	INIT_LIST_HEAD(&udc_dev->list);
 
-	udc_dev->plat = platform_device_alloc(gadget_name, devid);
-	if (!udc_dev->plat) {
+	udc_dev->pdev = platform_device_alloc(gadget_name, devid);
+	if (!udc_dev->pdev) {
 		kfree(udc_dev);
 		udc_dev = NULL;
 	}
@@ -622,7 +622,7 @@ out:
 
 void put_vudc_device(struct vudc_device *udc_dev)
 {
-	platform_device_put(udc_dev->plat);
+	platform_device_put(udc_dev->pdev);
 	kfree(udc_dev);
 }
 
@@ -715,7 +715,7 @@ static int vudc_probe(struct platform_device *pdev)
 
 	retval = sysfs_create_group(&pdev->dev.kobj, &vudc_attr_group);
 	if (retval) {
-		dev_err(&cdev->plat->dev, "create sysfs files\n");
+		dev_err(&cdev->pdev->dev, "create sysfs files\n");
 		goto err_sysfs;
 	}
 

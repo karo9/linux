@@ -465,7 +465,7 @@ void v_start_timer(struct vudc *cdev)
 {
 	struct transfer_timer *t = &cdev->tr_timer;
 
-	dev_dbg(&cdev->plat->dev, "timer start");
+	dev_dbg(&cdev->pdev->dev, "timer start");
 	switch (t->state) {
 	case VUDC_TR_RUNNING:
 		return;
@@ -483,7 +483,7 @@ void v_kick_timer(struct vudc *cdev, unsigned long time)
 {
 	struct transfer_timer *t = &cdev->tr_timer;
 
-	dev_dbg(&cdev->plat->dev, "timer kick");
+	dev_dbg(&cdev->pdev->dev, "timer kick");
 	switch (t->state) {
 	case VUDC_TR_RUNNING:
 		return;
@@ -501,6 +501,6 @@ void v_stop_timer(struct vudc *cdev)
 	struct transfer_timer *t = &cdev->tr_timer;
 
 	/* timer itself will take care of stopping */
-	dev_dbg(&cdev->plat->dev, "timer stop");
+	dev_dbg(&cdev->pdev->dev, "timer stop");
 	t->state = VUDC_TR_STOPPED;
 }
