@@ -36,6 +36,7 @@
 struct vep {
 	struct usb_ep ep;
 	unsigned type:2; /* type, as USB_ENDPOINT_XFER_* */
+	char name[8];	/* space for ep name */
 
 	const struct usb_endpoint_descriptor *desc;
 	struct usb_gadget *gadget;
