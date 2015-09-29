@@ -185,7 +185,7 @@ struct urbp *alloc_urbp(void)
 {
 	struct urbp *urb_p;
 
-	urb_p = kzalloc(sizeof(struct urbp), GFP_KERNEL);
+	urb_p = kzalloc(sizeof(*urb_p), GFP_KERNEL);
 	if (!urb_p)
 		return urb_p;
 
