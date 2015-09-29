@@ -63,7 +63,6 @@ struct urbp {
 
 struct v_unlink {
 	unsigned long seqnum;
-	struct list_head list;
 	__u32 status;
 };
 
