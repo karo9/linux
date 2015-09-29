@@ -207,6 +207,7 @@ static int v_rx_pdu(struct usbip_device *ud)
 		ret = v_recv_cmd_submit(cdev, &pdu);
 		break;
 	default:
+		ret = -EPIPE;
 		pr_err("rx: unknown command");
 		break;
 	}
