@@ -44,54 +44,44 @@ static int __init init(void)
 		return -EINVAL;
 	}
 
-	for (i = 0; i < vudc_number; i++) {
-		udc_dev = alloc_vudc_device(i);
-		if (!udc_dev)
-			goto free_vudc;
-		list_add_tail(&udc_dev->dev_entry, &vudc_devices);
-	}
-
 	retval = platform_driver_register(&vudc_driver);
 	if (retval < 0)
-		goto free_vudc;
+		goto out;
 
-	list_for_each_entry(udc_dev, &vudc_devices, dev_entry) {
+	for (i = 0; i < vudc_number; i++) {
+		udc_dev = alloc_vudc_device(i);
+		if (!udc_dev) {
+			retval = -ENOMEM;
+			goto cleanup;
+		}
+
 		retval = platform_device_add(udc_dev->pdev);
 		if (retval < 0) {
-			list_for_each_entry(udc_dev2, &vudc_devices,
-					    dev_entry) {
-				if (udc_dev2 == udc_dev)
-					break;
-				platform_device_del(udc_dev2->pdev);
-			}
-			goto unreg_driver;
+			put_vudc_device(udc_dev);
+			goto cleanup;
 		}
-	}
-	list_for_each_entry(udc_dev, &vudc_devices, dev_entry) {
+
+		list_add_tail(&udc_dev->dev_entry, &vudc_devices);
 		if (!platform_get_drvdata(udc_dev->pdev)) {
 			/*
 			 * The udc was added successfully but its probe
 			 * function failed for some reason.
 			 */
 			retval = -EINVAL;
-			goto del_plat;
+			goto cleanup;
 		}
 	}
-	return retval;
+	goto out;
 
-del_plat:
-	list_for_each_entry(udc_dev, &vudc_devices, dev_entry)
-		platform_device_del(udc_dev->pdev);
-
-unreg_driver:
-	platform_driver_unregister(&vudc_driver);
-
-free_vudc:
+cleanup:
 	list_for_each_entry_safe(udc_dev, udc_dev2, &vudc_devices, dev_entry) {
 		list_del(&udc_dev->dev_entry);
+		platform_device_del(udc_dev->pdev);
 		put_vudc_device(udc_dev);
 	}
 
+	platform_driver_unregister(&vudc_driver);
+out:
 	return retval;
 }
 module_init(init);
