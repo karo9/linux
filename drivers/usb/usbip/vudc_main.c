@@ -23,12 +23,6 @@
 
 #include "vudc.h"
 
-#define DRIVER_VERSION "06 March 2015"
-
-MODULE_DESCRIPTION("USB over IP Device Controller");
-MODULE_AUTHOR("Krzysztof Opasiak, Karol Kosik, Igor Kotrasinski");
-MODULE_LICENSE("GPL");
-
 struct vudc_module_parameters {
 	int num;
 };
@@ -120,3 +114,7 @@ static void __exit cleanup(void)
 	platform_driver_unregister(&vudc_driver);
 }
 module_exit(cleanup);
+
+MODULE_DESCRIPTION("USB over IP Device Controller");
+MODULE_AUTHOR("Krzysztof Opasiak, Karol Kosik, Igor Kotrasinski");
+MODULE_LICENSE("GPL");
