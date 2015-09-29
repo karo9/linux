@@ -250,12 +250,12 @@ void v_enqueue_ret_unlink(struct vudc *cdev, __u32 seqnum, __u32 status)
 	struct tx_item *txi;
 	struct v_unlink *unlink;
 
-	txi = kzalloc(sizeof(struct v_unlink), GFP_ATOMIC);
+	txi = kzalloc(sizeof(*txi), GFP_ATOMIC);
 	if (!txi) {
 		usbip_event_add(&cdev->ud, VDEV_EVENT_ERROR_MALLOC);
 		return;
 	}
-	unlink = kzalloc(sizeof(struct v_unlink), GFP_ATOMIC);
+	unlink = kzalloc(sizeof(*unlink), GFP_ATOMIC);
 	if (!unlink) {
 		kfree(txi);
 		usbip_event_add(&cdev->ud, VDEV_EVENT_ERROR_MALLOC);
@@ -275,7 +275,7 @@ void v_enqueue_ret_submit(struct vudc *cdev, struct urbp *urb_p)
 {
 	struct tx_item *txi;
 
-	txi = kzalloc(sizeof(struct v_unlink), GFP_ATOMIC);
+	txi = kzalloc(sizeof(*txi), GFP_ATOMIC);
 	if (!txi) {
 		usbip_event_add(&cdev->ud, VDEV_EVENT_ERROR_MALLOC);
 		return;
