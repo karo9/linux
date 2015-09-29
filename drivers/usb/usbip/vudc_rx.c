@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2015 Karol Kosik <karo9@interia.eu>
  * 		 2015 Samsung Electronics
- * 		 2015 Igor Kotrasinski <i.kotrasinsk@samsung.com>
+ * Author:	 Igor Kotrasinski <i.kotrasinsk@samsung.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by

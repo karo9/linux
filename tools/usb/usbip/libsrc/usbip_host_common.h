@@ -1,5 +1,10 @@
 /*
  * Copyright (C) 2015 Samsung Electronics
+ * Author:	 Igor Kotrasinski <i.kotrasinsk@samsung.com>
+ *
+ * Refactored from usbip_host_driver.c, which is:
+ * Copyright (C) 2011 matt mooney <mfm@muteddisk.com>
+ *               2005-2007 Takahiro Hirofuchi
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
