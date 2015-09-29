@@ -171,7 +171,6 @@ void v_stop_timer(struct vudc *cdev);
 
 /* vudc_dev.c */
 
-int alloc_urb_from_cmd(struct urb **urbp, struct usbip_header *pdu, u8 type);
 struct urbp *alloc_urbp(void);
 void free_urbp_and_urb(struct urbp *urb_p);
 

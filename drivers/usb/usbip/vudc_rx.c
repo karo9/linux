@@ -24,6 +24,52 @@
 #include "usbip_common.h"
 #include "vudc.h"
 
+static int alloc_urb_from_cmd(struct urb **urbp, struct usbip_header *pdu, u8 type)
+{
+	struct urb *urb;
+
+	if (type == USB_ENDPOINT_XFER_ISOC)
+		urb = usb_alloc_urb(pdu->u.cmd_submit.number_of_packets,
+					  GFP_KERNEL);
+	else
+		urb = usb_alloc_urb(0, GFP_KERNEL);
+
+	if (!urb)
+		goto err;
+
+	usbip_pack_pdu(pdu, urb, USBIP_CMD_SUBMIT, 0);
+
+	if (urb->transfer_buffer_length > 0) {
+		urb->transfer_buffer = kzalloc(urb->transfer_buffer_length,
+			GFP_KERNEL);
+		if (!urb->transfer_buffer)
+			goto free_urb;
+	}
+
+	urb->setup_packet = kmemdup(&pdu->u.cmd_submit.setup, 8,
+			    GFP_KERNEL);
+	if (!urb->setup_packet)
+		goto free_buffer;
+
+	/*
+	 * FIXME - we only setup pipe enough for usbip functions
+	 * to behave nicely
+	 */
+	urb->pipe |= pdu->base.direction == USBIP_DIR_IN ?
+			USB_DIR_IN : USB_DIR_OUT;
+
+	*urbp = urb;
+	return 0;
+
+free_buffer:
+	kfree(urb->transfer_buffer);
+	urb->transfer_buffer = NULL;
+free_urb:
+	usb_free_urb(urb);
+err:
+	return -ENOMEM;
+}
+
 static int v_recv_cmd_unlink(struct vudc *cdev,
 				struct usbip_header *pdu)
 {
