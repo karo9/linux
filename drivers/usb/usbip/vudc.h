@@ -20,7 +20,6 @@
 #ifndef __USBIP_VUDC_H
 #define __USBIP_VUDC_H
 
-#include <linux/device.h>
 #include <linux/platform_device.h>
 #include <linux/usb.h>
 #include <linux/usb/gadget.h>
@@ -32,11 +31,7 @@
 
 #include "usbip_common.h"
 
-extern const char *const ep_name[];
-
 extern struct platform_driver vudc_driver;
-extern const struct usb_ep_ops vep_ops;
-extern const struct usb_gadget_ops vgadget_ops;
 
 struct vep {
 	struct usb_ep ep;

@@ -170,7 +170,6 @@ static int v_rx_pdu(struct usbip_device *ud)
 int v_rx_loop(void *data)
 {
 	struct usbip_device *ud = data;
-	struct vudc *cdev = container_of(ud, struct vudc, udev);
 	int ret = 0;
 
 	while (!kthread_should_stop()) {

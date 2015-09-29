@@ -334,7 +334,7 @@ static int vgadget_udc_stop(struct usb_gadget *g)
 	return 0;
 }
 
-const struct usb_gadget_ops vgadget_ops = {
+static const struct usb_gadget_ops vgadget_ops = {
 	.get_frame	= vgadget_get_frame,
 	.set_selfpowered = vgadget_set_selfpowered,
 	.pullup		= vgadget_pullup,
@@ -526,7 +526,7 @@ static int vep_set_wedge(struct usb_ep *_ep)
 	return vep_set_halt_and_wedge(_ep, 1, 1);
 }
 
-const struct usb_ep_ops vep_ops = {
+static const struct usb_ep_ops vep_ops = {
 	.enable		= vep_enable,
 	.disable	= vep_disable,
 
