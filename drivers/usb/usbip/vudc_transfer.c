@@ -199,7 +199,7 @@ static int transfer(struct vudc *cdev,
 	int sent = 0;
 top:
 	/* if there's no request queued, the device is NAKing; return */
-	list_for_each_entry(req, &ep->queue, queue) {
+	list_for_each_entry(req, &ep->req_queue, req_entry) {
 		unsigned	host_len, dev_len, len;
 		void		*ubuf_pos, *rbuf_pos;
 		int		is_short, to_host;
@@ -291,7 +291,7 @@ top:
 		/* device side completion --> continuable */
 		if (req->req.status != -EINPROGRESS) {
 
-			list_del_init(&req->queue);
+			list_del_init(&req->req_entry);
 			spin_unlock(&cdev->lock);
 			usb_gadget_giveback_request(&ep->ep, &req->req);
 			spin_lock(&cdev->lock);
@@ -345,7 +345,7 @@ static void v_timer(unsigned long _vudc)
 	}
 
 restart:
-	list_for_each_entry_safe(urb_p, tmp, &cdev->urb_q, urb_q) {
+	list_for_each_entry_safe(urb_p, tmp, &cdev->urb_queue, urb_entry) {
 		struct urb *urb = urb_p->urb;
 
 		ep = urb_p->ep;
@@ -427,7 +427,7 @@ return_urb:
 			ep->already_seen = ep->setup_stage = 0;
 
 		spin_lock(&cdev->lock_tx);
-		list_del(&urb_p->urb_q);
+		list_del(&urb_p->urb_entry);
 		if (!urb->unlinked) {
 			v_enqueue_ret_submit(cdev, urb_p);
 		} else {
@@ -442,7 +442,7 @@ return_urb:
 	}
 
 	/* TODO - also wait on empty usb_request queues? */
-	if (list_empty(&cdev->urb_q))
+	if (list_empty(&cdev->urb_queue))
 		timer->state = VUDC_TR_IDLE;
 	else
 		mod_timer(&timer->timer,

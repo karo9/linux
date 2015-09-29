@@ -39,7 +39,7 @@ struct vep {
 
 	const struct usb_endpoint_descriptor *desc;
 	struct usb_gadget *gadget;
-	struct list_head queue; /* Request queue */
+	struct list_head req_queue; /* Request queue */
 	unsigned halted:1;
 	unsigned wedged:1;
 	unsigned already_seen:1;
@@ -49,13 +49,13 @@ struct vep {
 struct vrequest {
 	struct usb_request req;
 	struct vudc *cdev;
-	struct list_head queue; /* Request queue */
+	struct list_head req_entry; /* Request queue */
 };
 
 struct urbp {
 	struct urb *urb;
 	struct vep *ep;
-	struct list_head urb_q; /* urb queue */
+	struct list_head urb_entry; /* urb queue */
 	unsigned long seqnum;
 	unsigned type:2; /* for tx, since ep type can change after */
 	unsigned new:1;
@@ -72,7 +72,7 @@ enum tx_type {
 };
 
 struct tx_item {
-	struct list_head tx_q;
+	struct list_head tx_entry;
 	enum tx_type type;
 	union {
 		struct urbp *s;
@@ -104,10 +104,10 @@ struct vudc {
 	struct transfer_timer tr_timer;
 	struct timeval start_time;
 
-	struct list_head urb_q;
+	struct list_head urb_queue;
 
 	spinlock_t lock_tx;
-	struct list_head priv_tx;
+	struct list_head tx_queue;
 	wait_queue_head_t tx_waitq;
 
 	spinlock_t lock;
@@ -118,7 +118,7 @@ struct vudc {
 
 struct vudc_device {
 	struct platform_device *pdev;
-	struct list_head list;
+	struct list_head dev_entry;
 };
 
 extern const struct attribute_group vudc_attr_group;

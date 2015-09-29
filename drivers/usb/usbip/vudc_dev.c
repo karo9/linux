@@ -194,7 +194,7 @@ struct urbp *alloc_urbp(void)
 
 	urb_p->urb = NULL;
 	urb_p->ep = NULL;
-	INIT_LIST_HEAD(&urb_p->urb_q);
+	INIT_LIST_HEAD(&urb_p->urb_entry);
 	return urb_p;
 }
 
@@ -219,9 +219,10 @@ static void nuke(struct vudc *cdev, struct vep *ep)
 {
 	struct vrequest	*req;
 
-	while (!list_empty(&ep->queue)) {
-		req = list_entry(ep->queue.next, struct vrequest, queue);
-		list_del_init(&req->queue);
+	while (!list_empty(&ep->req_queue)) {
+		req = list_entry(ep->req_queue.next, struct vrequest,
+				 req_entry);
+		list_del_init(&req->req_entry);
 		req->req.status = -ESHUTDOWN;
 
 		spin_unlock(&cdev->lock);
@@ -244,8 +245,8 @@ static void stop_activity(struct vudc *cdev)
 		nuke(cdev, &cdev->ep[i]);
 	}
 
-	list_for_each_entry_safe(urb_p, tmp, &cdev->urb_q, urb_q) {
-		list_del(&urb_p->urb_q);
+	list_for_each_entry_safe(urb_p, tmp, &cdev->urb_queue, urb_entry) {
+		list_del(&urb_p->urb_entry);
 		free_urbp_and_urb(urb_p);
 	}
 }
@@ -409,7 +410,7 @@ static struct usb_request *vep_alloc_request(struct usb_ep *_ep,
 	if (!req)
 		return NULL;
 
-	INIT_LIST_HEAD(&req->queue);
+	INIT_LIST_HEAD(&req->req_entry);
 
 	return &req->req;
 }
@@ -445,7 +446,7 @@ static int vep_queue(struct usb_ep *_ep, struct usb_request *_req,
 	_req->actual = 0;
 	_req->status = -EINPROGRESS;
 
-	list_add_tail(&req->queue, &ep->queue);
+	list_add_tail(&req->req_entry, &ep->req_queue);
 	spin_unlock_irqrestore(&cdev->lock, flags);
 
 	return 0;
@@ -471,9 +472,9 @@ static int vep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 		return -ESHUTDOWN;
 
 	spin_lock_irqsave(&cdev->lock, flags);
-	list_for_each_entry(lst, &cdev->urb_q, queue) {
+	list_for_each_entry(lst, &ep->req_queue, req_entry) {
 		if (&lst->req == _req) {
-			list_del_init(&lst->queue);
+			list_del_init(&lst->req_entry);
 			_req->status = -ECONNRESET;
 			retval = 0;
 			break;
@@ -505,7 +506,7 @@ vep_set_halt_and_wedge(struct usb_ep *_ep, int value, int wedged)
 	if (!value)
 		ep->halted = ep->wedged = 0;
 	else if (ep->desc && (ep->desc->bEndpointAddress & USB_DIR_IN) &&
-			!list_empty(&ep->queue))
+			!list_empty(&ep->req_queue))
 		retval = -EAGAIN;
 	else {
 		ep->halted = 1;
@@ -608,7 +609,7 @@ struct vudc_device *alloc_vudc_device(int devid)
 	if (!udc_dev)
 		goto out;
 
-	INIT_LIST_HEAD(&udc_dev->list);
+	INIT_LIST_HEAD(&udc_dev->dev_entry);
 
 	udc_dev->pdev = platform_device_alloc(gadget_name, devid);
 	if (!udc_dev->pdev) {
@@ -653,13 +654,13 @@ static int init_vudc_hw(struct vudc *cdev)
 		ep->ep.max_streams = 16;
 		ep->gadget = &cdev->gadget;
 		ep->desc = NULL;
-		INIT_LIST_HEAD(&ep->queue);
+		INIT_LIST_HEAD(&ep->req_queue);
 	}
 
 	spin_lock_init(&cdev->lock);
 	spin_lock_init(&cdev->lock_tx);
-	INIT_LIST_HEAD(&cdev->urb_q);
-	INIT_LIST_HEAD(&cdev->priv_tx);
+	INIT_LIST_HEAD(&cdev->urb_queue);
+	INIT_LIST_HEAD(&cdev->tx_queue);
 	init_waitqueue_head(&cdev->tx_waitq);
 
 	spin_lock_init(&ud->lock);

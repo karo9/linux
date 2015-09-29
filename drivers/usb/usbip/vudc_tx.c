@@ -194,9 +194,10 @@ static int v_send_ret(struct vudc *cdev)
 	int ret = 0;
 
 	spin_lock_irqsave(&cdev->lock_tx, flags);
-	while (!list_empty(&cdev->priv_tx)) {
-		txi = list_first_entry(&cdev->priv_tx, struct tx_item, tx_q);
-		list_del_init(&txi->tx_q);
+	while (!list_empty(&cdev->tx_queue)) {
+		txi = list_first_entry(&cdev->tx_queue, struct tx_item,
+				       tx_entry);
+		list_del_init(&txi->tx_entry);
 		spin_unlock_irqrestore(&cdev->lock_tx, flags);
 
 		switch (txi->type) {
@@ -236,8 +237,8 @@ int v_tx_loop(void *data)
 			break;
 		}
 		wait_event_interruptible(cdev->tx_waitq,
-						(!list_empty(&cdev->priv_tx) ||
-						kthread_should_stop()));
+					 (!list_empty(&cdev->tx_queue) ||
+					 kthread_should_stop()));
 	}
 
 	return 0;
@@ -266,7 +267,7 @@ void v_enqueue_ret_unlink(struct vudc *cdev, __u32 seqnum, __u32 status)
 	txi->type = TX_UNLINK;
 	txi->u = unlink;
 
-	list_add_tail(&txi->tx_q, &cdev->priv_tx);
+	list_add_tail(&txi->tx_entry, &cdev->tx_queue);
 }
 
 /* called with spinlocks held */
@@ -283,5 +284,5 @@ void v_enqueue_ret_submit(struct vudc *cdev, struct urbp *urb_p)
 	txi->type = TX_SUBMIT;
 	txi->s = urb_p;
 
-	list_add_tail(&txi->tx_q, &cdev->priv_tx);
+	list_add_tail(&txi->tx_entry, &cdev->tx_queue);
 }

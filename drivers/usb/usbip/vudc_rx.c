@@ -31,7 +31,7 @@ static int v_recv_cmd_unlink(struct vudc *cdev,
 	struct urbp *urb_p;
 
 	spin_lock_irqsave(&cdev->lock, flags);
-	list_for_each_entry(urb_p, &cdev->urb_q, urb_q) {
+	list_for_each_entry(urb_p, &cdev->urb_queue, urb_entry) {
 		if (urb_p->seqnum != pdu->u.cmd_unlink.seqnum)
 			continue;
 		urb_p->urb->unlinked = -ECONNRESET;
@@ -119,7 +119,7 @@ static int v_recv_cmd_submit(struct vudc *cdev,
 
 	spin_lock_irqsave(&cdev->lock, flags);
 	v_kick_timer(cdev, jiffies);
-	list_add_tail(&urb_p->urb_q, &cdev->urb_q);
+	list_add_tail(&urb_p->urb_entry, &cdev->urb_queue);
 	spin_unlock_irqrestore(&cdev->lock, flags);
 
 	return 0;
