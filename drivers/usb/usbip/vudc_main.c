@@ -28,6 +28,14 @@ static unsigned int vudc_number = 1;
 module_param_named(num, vudc_number, uint, S_IRUGO);
 MODULE_PARM_DESC(num, "number of emulated controllers");
 
+static struct platform_driver vudc_driver = {
+	.probe		= vudc_probe,
+	.remove		= vudc_remove,
+	.driver		= {
+		.name	= GADGET_NAME,
+	},
+};
+
 static struct list_head vudc_devices = LIST_HEAD_INIT(vudc_devices);
 
 static int __init init(void)

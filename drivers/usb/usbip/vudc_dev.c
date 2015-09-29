@@ -33,10 +33,7 @@
 
 /* String constants and ep names */
 
-static const char gadget_name[] = "usbip-vudc";
-
 static const char ep0name[] = "ep0";
-
 
 /* see dummy_hcd.c */
 static const struct {
@@ -611,7 +608,7 @@ struct vudc_device *alloc_vudc_device(int devid)
 
 	INIT_LIST_HEAD(&udc_dev->dev_entry);
 
-	udc_dev->pdev = platform_device_alloc(gadget_name, devid);
+	udc_dev->pdev = platform_device_alloc(GADGET_NAME, devid);
 	if (!udc_dev->pdev) {
 		kfree(udc_dev);
 		udc_dev = NULL;
@@ -692,7 +689,7 @@ static void cleanup_vudc_hw(struct vudc *cdev)
 
 /* platform driver ops */
 
-static int vudc_probe(struct platform_device *pdev)
+int vudc_probe(struct platform_device *pdev)
 {
 	struct vudc *cdev;
 	int retval = -ENOMEM;
@@ -701,7 +698,7 @@ static int vudc_probe(struct platform_device *pdev)
 	if (!cdev)
 		goto out;
 
-	cdev->gadget.name = gadget_name;
+	cdev->gadget.name = GADGET_NAME;
 	cdev->gadget.ops = &vgadget_ops;
 	cdev->gadget.max_speed = USB_SPEED_HIGH;
 	cdev->gadget.dev.parent = &pdev->dev;
@@ -734,7 +731,7 @@ out:
 	return retval;
 }
 
-static int vudc_remove(struct platform_device *pdev)
+int vudc_remove(struct platform_device *pdev)
 {
 	struct vudc *cdev = platform_get_drvdata(pdev);
 
@@ -744,11 +741,3 @@ static int vudc_remove(struct platform_device *pdev)
 	kfree(cdev);
 	return 0;
 }
-
-struct platform_driver vudc_driver = {
-	.probe		= vudc_probe,
-	.remove		= vudc_remove,
-	.driver		= {
-		.name	= gadget_name,
-	},
-};

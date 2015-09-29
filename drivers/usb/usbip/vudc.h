@@ -31,7 +31,7 @@
 
 #include "usbip_common.h"
 
-extern struct platform_driver vudc_driver;
+#define GADGET_NAME "usbip-vudc"
 
 struct vep {
 	struct usb_ep ep;
@@ -178,5 +178,8 @@ struct vep *find_endpoint(struct vudc *cdev, u8 address);
 
 struct vudc_device *alloc_vudc_device(int devid);
 void put_vudc_device(struct vudc_device *udc_dev);
+
+int vudc_probe(struct platform_device *pdev);
+int vudc_remove(struct platform_device *pdev);
 
 #endif /* __USBIP_VUDC_H */
