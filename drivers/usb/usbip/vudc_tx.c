@@ -197,7 +197,7 @@ static int v_send_ret(struct vudc *cdev)
 	while (!list_empty(&cdev->tx_queue)) {
 		txi = list_first_entry(&cdev->tx_queue, struct tx_item,
 				       tx_entry);
-		list_del_init(&txi->tx_entry);
+		list_del(&txi->tx_entry);
 		spin_unlock_irqrestore(&cdev->lock_tx, flags);
 
 		switch (txi->type) {
