@@ -220,8 +220,8 @@ static void nuke(struct vudc *cdev, struct vep *ep)
 	struct vrequest	*req;
 
 	while (!list_empty(&ep->req_queue)) {
-		req = list_entry(ep->req_queue.next, struct vrequest,
-				 req_entry);
+		req = list_first_entry(&ep->req_queue, struct vrequest,
+				       req_entry);
 		list_del_init(&req->req_entry);
 		req->req.status = -ESHUTDOWN;
 

@@ -48,7 +48,7 @@ static ssize_t fetch_descriptor(struct usb_ctrlrequest *req, struct vudc *cdev,
 		goto exit;
 
 	/* assuming request queue is empty; request is now on top */
-	usb_req = list_entry(ep0->req_queue.prev, struct vrequest, req_entry);
+	usb_req = list_last_entry(&ep0->req_queue, struct vrequest, req_entry);
 	list_del(&usb_req->req_entry);
 
 	copysz = min_t(ssize_t, sz, usb_req->req.length);
