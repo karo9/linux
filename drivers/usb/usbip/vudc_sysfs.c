@@ -130,9 +130,9 @@ static ssize_t store_sockfd(struct device *dev, struct device_attribute *attr,
 		return -EINVAL;
 
 	if (sockfd != -1) {
-		spin_lock_irq(&cdev->udev.lock);
+		spin_lock_irq(&cdev->ud.lock);
 
-		if (cdev->udev.status != SDEV_ST_AVAILABLE)
+		if (cdev->ud.status != SDEV_ST_AVAILABLE)
 			goto err;
 
 		socket = sockfd_lookup(sockfd, &err);
@@ -141,36 +141,36 @@ static ssize_t store_sockfd(struct device *dev, struct device_attribute *attr,
 			goto err;
 		}
 
-		cdev->udev.tcp_socket = socket;
+		cdev->ud.tcp_socket = socket;
 
-		spin_unlock_irq(&cdev->udev.lock);
+		spin_unlock_irq(&cdev->ud.lock);
 
-		cdev->udev.tcp_rx = kthread_get_run(&v_rx_loop,
-						    &cdev->udev, "vudc_rx");
-		cdev->udev.tcp_tx = kthread_get_run(&v_tx_loop,
-						    &cdev->udev, "vudc_tx");
+		cdev->ud.tcp_rx = kthread_get_run(&v_rx_loop,
+						    &cdev->ud, "vudc_rx");
+		cdev->ud.tcp_tx = kthread_get_run(&v_tx_loop,
+						    &cdev->ud, "vudc_tx");
 
-		spin_lock_irq(&cdev->udev.lock);
-		cdev->udev.status = SDEV_ST_USED;
-		spin_unlock_irq(&cdev->udev.lock);
+		spin_lock_irq(&cdev->ud.lock);
+		cdev->ud.status = SDEV_ST_USED;
+		spin_unlock_irq(&cdev->ud.lock);
 
 		spin_lock_irq(&cdev->lock);
 		do_gettimeofday(&cdev->start_time);
 		v_start_timer(cdev);
 		spin_unlock_irq(&cdev->lock);
 	} else {
-		spin_lock_irq(&cdev->udev.lock);
-		if (cdev->udev.status != SDEV_ST_USED)
+		spin_lock_irq(&cdev->ud.lock);
+		if (cdev->ud.status != SDEV_ST_USED)
 			goto err;
-		spin_unlock_irq(&cdev->udev.lock);
+		spin_unlock_irq(&cdev->ud.lock);
 
-		usbip_event_add(&cdev->udev, VUDC_EVENT_DOWN);
+		usbip_event_add(&cdev->ud, VUDC_EVENT_DOWN);
 	}
 
 	return count;
 
 err:
-	spin_unlock_irq(&cdev->udev.lock);
+	spin_unlock_irq(&cdev->ud.lock);
 	return -EINVAL;
 }
 static DEVICE_ATTR(usbip_sockfd, S_IWUSR, NULL, store_sockfd);
@@ -185,9 +185,9 @@ static ssize_t usbip_status_show(struct device *dev,
 		dev_err(&cdev->plat->dev, "no device");
 		return -ENODEV;
 	}
-	spin_lock_irq(&cdev->udev.lock);
-	status = cdev->udev.status;
-	spin_unlock_irq(&cdev->udev.lock);
+	spin_lock_irq(&cdev->ud.lock);
+	status = cdev->ud.status;
+	spin_unlock_irq(&cdev->ud.lock);
 
 	return snprintf(out, PAGE_SIZE, "%d\n", status);
 }

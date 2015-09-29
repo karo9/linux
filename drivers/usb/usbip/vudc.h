@@ -101,7 +101,7 @@ struct vudc {
 
 	struct usb_device_descriptor dev_desc;
 
-	struct usbip_device udev;
+	struct usbip_device ud;
 	struct transfer_timer tr_timer;
 	struct timeval start_time;
 

@@ -60,7 +60,7 @@ static int v_recv_cmd_submit(struct vudc *cdev,
 
 	urb_p = alloc_urbp();
 	if (!urb_p) {
-		usbip_event_add(&cdev->udev, VUDC_EVENT_ERROR_MALLOC);
+		usbip_event_add(&cdev->ud, VUDC_EVENT_ERROR_MALLOC);
 		return -ENOMEM;
 	}
 
@@ -75,7 +75,7 @@ static int v_recv_cmd_submit(struct vudc *cdev,
 		/* we don't know the type, there may be isoc data! */
 		dev_err(&cdev->plat->dev, "request to nonexistent endpoint");
 		spin_unlock_irq(&cdev->lock);
-		usbip_event_add(&cdev->udev, VUDC_EVENT_ERROR_TCP);
+		usbip_event_add(&cdev->ud, VUDC_EVENT_ERROR_TCP);
 		ret = -EPIPE;
 		goto free_urbp;
 	}
@@ -87,7 +87,7 @@ static int v_recv_cmd_submit(struct vudc *cdev,
 
 	ret = alloc_urb_from_cmd(&urb_p->urb, pdu, urb_p->ep->type);
 	if (ret) {
-		usbip_event_add(&cdev->udev, VUDC_EVENT_ERROR_MALLOC);
+		usbip_event_add(&cdev->ud, VUDC_EVENT_ERROR_MALLOC);
 		ret = -ENOMEM;
 		goto free_urbp;
 	}
@@ -111,10 +111,10 @@ static int v_recv_cmd_submit(struct vudc *cdev,
 		break;
 	}
 
-	if ((ret = usbip_recv_xbuff(&cdev->udev, urb_p->urb)) < 0)
+	if ((ret = usbip_recv_xbuff(&cdev->ud, urb_p->urb)) < 0)
 		goto free_urbp;
 
-	if ((ret = usbip_recv_iso(&cdev->udev, urb_p->urb)) < 0)
+	if ((ret = usbip_recv_iso(&cdev->ud, urb_p->urb)) < 0)
 		goto free_urbp;
 
 	spin_lock_irqsave(&cdev->lock, flags);
@@ -133,7 +133,7 @@ static int v_rx_pdu(struct usbip_device *ud)
 {
 	int ret;
 	struct usbip_header pdu;
-	struct vudc *cdev = container_of(ud, struct vudc, udev);
+	struct vudc *cdev = container_of(ud, struct vudc, ud);
 
 	memset(&pdu, 0, sizeof(pdu));
 	ret = usbip_recv(ud->tcp_socket, &pdu, sizeof(pdu));

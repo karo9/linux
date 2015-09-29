@@ -317,7 +317,7 @@ static int vgadget_udc_start(struct usb_gadget *g,
 	ret = descriptor_cache(cdev);
 	spin_unlock_irqrestore(&cdev->lock, flags);
 	if (ret) {
-		usbip_event_add(&cdev->udev, VUDC_EVENT_ERROR_USB);
+		usbip_event_add(&cdev->ud, VUDC_EVENT_ERROR_USB);
 	}
 	return 0;
 }
@@ -326,9 +326,9 @@ static int vgadget_udc_stop(struct usb_gadget *g)
 {
 	struct vudc *cdev = usb_gadget_to_vudc(g);
 
-	usbip_event_add(&cdev->udev, VUDC_EVENT_REMOVED);
-	usbip_stop_eh(&cdev->udev); /* Wait for eh completion */
-	usbip_start_eh(&cdev->udev);
+	usbip_event_add(&cdev->ud, VUDC_EVENT_REMOVED);
+	usbip_stop_eh(&cdev->ud); /* Wait for eh completion */
+	usbip_start_eh(&cdev->ud);
 
 	cdev->driver = NULL;
 	return 0;
@@ -545,7 +545,7 @@ static const struct usb_ep_ops vep_ops = {
 
 static void vudc_shutdown(struct usbip_device *ud)
 {
-	struct vudc *cdev = container_of(ud, struct vudc, udev);
+	struct vudc *cdev = container_of(ud, struct vudc, ud);
 	unsigned long flags;
 
 	dev_dbg(&cdev->plat->dev, "device shutdown");
@@ -575,7 +575,7 @@ static void vudc_shutdown(struct usbip_device *ud)
 
 static void vudc_device_reset(struct usbip_device *ud)
 {
-	struct vudc *cdev = container_of(ud, struct vudc, udev);
+	struct vudc *cdev = container_of(ud, struct vudc, ud);
 	unsigned long flags;
 
 	dev_dbg(&cdev->plat->dev, "device reset");
@@ -629,7 +629,7 @@ void put_vudc_device(struct vudc_device *udc_dev)
 static int init_vudc_hw(struct vudc *cdev)
 {
 	int i;
-	struct usbip_device *udev = &cdev->udev;
+	struct usbip_device *ud = &cdev->ud;
 	struct vep *ep;
 
 	cdev->ep = kcalloc(VIRTUAL_ENDPOINTS, sizeof(*cdev->ep), GFP_KERNEL);
@@ -662,15 +662,15 @@ static int init_vudc_hw(struct vudc *cdev)
 	INIT_LIST_HEAD(&cdev->priv_tx);
 	init_waitqueue_head(&cdev->tx_waitq);
 
-	spin_lock_init(&udev->lock);
-	udev->status = SDEV_ST_AVAILABLE;
-	udev->side = USBIP_VUDC;
+	spin_lock_init(&ud->lock);
+	ud->status = SDEV_ST_AVAILABLE;
+	ud->side = USBIP_VUDC;
 
-	udev->eh_ops.shutdown = vudc_shutdown;
-	udev->eh_ops.reset    = vudc_device_reset;
-	udev->eh_ops.unusable = vudc_device_unusable;
+	ud->eh_ops.shutdown = vudc_shutdown;
+	ud->eh_ops.reset    = vudc_device_reset;
+	ud->eh_ops.unusable = vudc_device_unusable;
 
-	usbip_start_eh(udev);
+	usbip_start_eh(ud);
 
 	cdev->gadget.ep0 = &cdev->ep[0].ep;
 	list_del_init(&cdev->ep[0].ep.ep_list);
@@ -684,8 +684,8 @@ nomem_ep:
 
 static void cleanup_vudc_hw(struct vudc *cdev)
 {
-	usbip_event_add(&cdev->udev, VUDC_EVENT_REMOVED);
-	usbip_stop_eh(&cdev->udev);
+	usbip_event_add(&cdev->ud, VUDC_EVENT_REMOVED);
+	usbip_stop_eh(&cdev->ud);
 	kfree(cdev->ep);
 }
 
