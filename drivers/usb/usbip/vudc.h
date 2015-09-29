@@ -67,12 +67,14 @@ struct v_unlink {
 	__u32 status;
 };
 
-#define TX_UNLINK 1
-#define TX_SUBMIT 0
+enum tx_type {
+	TX_UNLINK,
+	TX_SUBMIT,
+};
 
 struct tx_item {
 	struct list_head tx_q;
-	unsigned type:1;
+	enum tx_type type;
 	union {
 		struct urbp *s;
 		struct v_unlink *u;

@@ -191,7 +191,7 @@ static int v_send_ret(struct vudc *cdev)
 	unsigned long flags;
 	struct tx_item *txi;
 	size_t total_size = 0;
-	int ret;
+	int ret = 0;
 
 	spin_lock_irqsave(&cdev->lock_tx, flags);
 	while (!list_empty(&cdev->priv_tx)) {
