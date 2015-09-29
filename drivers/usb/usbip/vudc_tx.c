@@ -232,8 +232,7 @@ int v_tx_loop(void *data)
 		if (usbip_event_happened(&cdev->udev))
 			break;
 		if ((ret = v_send_ret(cdev)) < 0) {
-			dev_err(&cdev->plat->dev,
-				"v_tx exit with error %d", ret);
+			pr_warn("v_tx exit with error %d", ret);
 			break;
 		}
 		wait_event_interruptible(cdev->tx_waitq,

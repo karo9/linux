@@ -161,7 +161,7 @@ static int v_rx_pdu(struct usbip_device *ud)
 		ret = v_recv_cmd_submit(cdev, &pdu);
 		break;
 	default:
-		dev_err(&cdev->plat->dev, "rx: unknown command");
+		pr_err("rx: unknown command");
 		break;
 	}
 	return ret;
@@ -177,8 +177,7 @@ int v_rx_loop(void *data)
 		if (usbip_event_happened(ud))
 			break;
 		if ((ret = v_rx_pdu(ud)) < 0) {
-			dev_err(&cdev->plat->dev,
-				"v_rx exit with error %d", ret);
+			pr_warn("v_rx exit with error %d", ret);
 			break;
 		}
 	}
