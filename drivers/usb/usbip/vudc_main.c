@@ -23,15 +23,9 @@
 
 #include "vudc.h"
 
-struct vudc_module_parameters {
-	int num;
-};
+static unsigned int vudc_number = 1;
 
-static struct vudc_module_parameters mod_data = {
-	.num = 1
-};
-
-module_param_named(num, mod_data.num, uint, S_IRUGO);
+module_param_named(num, vudc_number, uint, S_IRUGO);
 MODULE_PARM_DESC(num, "number of emulated controllers");
 
 static struct list_head vudc_devices = LIST_HEAD_INIT(vudc_devices);
@@ -45,12 +39,12 @@ static int __init init(void)
 	if (usb_disabled())
 		return -ENODEV;
 
-	if (mod_data.num < 1) {
+	if (vudc_number < 1) {
 		pr_err("Number of emulated UDC must be no less than 1");
 		return -EINVAL;
 	}
 
-	for (i = 0; i < mod_data.num; i++) {
+	for (i = 0; i < vudc_number; i++) {
 		udc_dev = alloc_vudc_device(i);
 		if (!udc_dev)
 			goto free_vudc;
