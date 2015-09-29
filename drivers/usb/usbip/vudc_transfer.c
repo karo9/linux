@@ -27,15 +27,22 @@
 
 #include "vudc.h"
 
+#define DEV_REQUEST	(USB_TYPE_STANDARD | USB_RECIP_DEVICE)
+#define DEV_INREQUEST	(DEV_REQUEST | USB_DIR_IN)
+#define INTF_REQUEST	(USB_TYPE_STANDARD | USB_RECIP_INTERFACE)
+#define INTF_INREQUEST	(INTF_REQUEST | USB_DIR_IN)
+#define EP_REQUEST	(USB_TYPE_STANDARD | USB_RECIP_ENDPOINT)
+#define EP_INREQUEST	(EP_REQUEST | USB_DIR_IN)
+
 static int get_frame_limit(enum usb_device_speed speed)
 {
 	switch (speed) {
 	case USB_SPEED_LOW:
-		return 8/*bytes*/ * 12/*packets*/;
+		return 8 /*bytes*/ * 12 /*packets*/;
 	case USB_SPEED_FULL:
-		return 64/*bytes*/ * 19/*packets*/;
+		return 64 /*bytes*/ * 19 /*packets*/;
 	case USB_SPEED_HIGH:
-		return 512/*bytes*/ * 13/*packets*/ * 8/*uframes*/;
+		return 512 /*bytes*/ * 13 /*packets*/ * 8 /*uframes*/;
 	case USB_SPEED_SUPER:
 		/* Bus speed is 500000 bytes/ms, so use a little less */
 		return 490000;
@@ -45,13 +52,6 @@ static int get_frame_limit(enum usb_device_speed speed)
 	}
 
 }
-
-#define Dev_Request	(USB_TYPE_STANDARD | USB_RECIP_DEVICE)
-#define Dev_InRequest	(Dev_Request | USB_DIR_IN)
-#define Intf_Request	(USB_TYPE_STANDARD | USB_RECIP_INTERFACE)
-#define Intf_InRequest	(Intf_Request | USB_DIR_IN)
-#define Ep_Request	(USB_TYPE_STANDARD | USB_RECIP_ENDPOINT)
-#define Ep_InRequest	(Ep_Request | USB_DIR_IN)
 
 /*
  * handle_control_request() - handles all control transfers
@@ -80,14 +80,14 @@ static int handle_control_request(struct vudc *cdev, struct urb *urb,
 	w_value = le16_to_cpu(setup->wValue);
 	switch (setup->bRequest) {
 	case USB_REQ_SET_ADDRESS:
-		if (setup->bRequestType != Dev_Request)
+		if (setup->bRequestType != DEV_REQUEST)
 			break;
 		cdev->address = w_value;
 		ret_val = 0;
 		*status = 0;
 		break;
 	case USB_REQ_SET_FEATURE:
-		if (setup->bRequestType == Dev_Request) {
+		if (setup->bRequestType == DEV_REQUEST) {
 			ret_val = 0;
 			switch (w_value) {
 			case USB_DEVICE_REMOTE_WAKEUP:
@@ -108,7 +108,7 @@ static int handle_control_request(struct vudc *cdev, struct urb *urb,
 				cdev->devstatus |= (1 << w_value);
 				*status = 0;
 			}
-		} else if (setup->bRequestType == Ep_Request) {
+		} else if (setup->bRequestType == EP_REQUEST) {
 			/* endpoint halt */
 			ep2 = find_endpoint(cdev, w_index);
 			if (!ep2 || ep2->ep.name == cdev->ep[0].ep.name) {
@@ -121,7 +121,7 @@ static int handle_control_request(struct vudc *cdev, struct urb *urb,
 		}
 		break;
 	case USB_REQ_CLEAR_FEATURE:
-		if (setup->bRequestType == Dev_Request) {
+		if (setup->bRequestType == DEV_REQUEST) {
 			ret_val = 0;
 			switch (w_value) {
 			case USB_DEVICE_REMOTE_WAKEUP:
@@ -141,7 +141,7 @@ static int handle_control_request(struct vudc *cdev, struct urb *urb,
 				cdev->devstatus &= ~(1 << w_value);
 				*status = 0;
 			}
-		} else if (setup->bRequestType == Ep_Request) {
+		} else if (setup->bRequestType == EP_REQUEST) {
 			/* endpoint halt */
 			ep2 = find_endpoint(cdev, w_index);
 			if (!ep2) {
@@ -155,9 +155,9 @@ static int handle_control_request(struct vudc *cdev, struct urb *urb,
 		}
 		break;
 	case USB_REQ_GET_STATUS:
-		if (setup->bRequestType == Dev_InRequest
-				|| setup->bRequestType == Intf_InRequest
-				|| setup->bRequestType == Ep_InRequest) {
+		if (setup->bRequestType == DEV_INREQUEST
+				|| setup->bRequestType == INTF_INREQUEST
+				|| setup->bRequestType == EP_INREQUEST) {
 			char *buf;
 			/*
 			 * device: remote wakeup, selfpowered
@@ -166,7 +166,7 @@ static int handle_control_request(struct vudc *cdev, struct urb *urb,
 			 */
 			buf = (char *)urb->transfer_buffer;
 			if (urb->transfer_buffer_length > 0) {
-				if (setup->bRequestType == Ep_InRequest) {
+				if (setup->bRequestType == EP_INREQUEST) {
 					ep2 = find_endpoint(cdev, w_index);
 					if (!ep2) {
 						ret_val = -EOPNOTSUPP;
@@ -174,7 +174,7 @@ static int handle_control_request(struct vudc *cdev, struct urb *urb,
 					}
 					buf[0] = ep2->halted;
 				} else if (setup->bRequestType ==
-					   Dev_InRequest) {
+					   DEV_INREQUEST) {
 					buf[0] = (u8)cdev->devstatus;
 				} else
 					buf[0] = 0;
