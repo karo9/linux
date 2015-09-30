@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015 Karol Kosik <karo9@interia.eu>
- * 		 2015 Samsung Electronics
+ *		 2015 Samsung Electronics
  * Author:	 Igor Kotrasinski <i.kotrasinsk@samsung.com>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -232,7 +232,8 @@ int v_tx_loop(void *data)
 	while (!kthread_should_stop()) {
 		if (usbip_event_happened(&udc->ud))
 			break;
-		if ((ret = v_send_ret(udc)) < 0) {
+		ret = v_send_ret(udc);
+		if (ret < 0) {
 			pr_warn("v_tx exit with error %d", ret);
 			break;
 		}

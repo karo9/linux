@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015 Karol Kosik <karo9@interia.eu>
- * 		 2015 Samsung Electronics
+ *		 2015 Samsung Electronics
  * Author:	 Igor Kotrasinski <i.kotrasinsk@samsung.com>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -24,7 +24,8 @@
 #include "usbip_common.h"
 #include "vudc.h"
 
-static int alloc_urb_from_cmd(struct urb **urbp, struct usbip_header *pdu, u8 type)
+static int alloc_urb_from_cmd(struct urb **urbp,
+			      struct usbip_header *pdu, u8 type)
 {
 	struct urb *urb;
 
@@ -156,11 +157,12 @@ static int v_recv_cmd_submit(struct vudc *udc,
 		urb_p->urb->pipe |= (PIPE_ISOCHRONOUS << 30);
 		break;
 	}
-
-	if ((ret = usbip_recv_xbuff(&udc->ud, urb_p->urb)) < 0)
+	ret = usbip_recv_xbuff(&udc->ud, urb_p->urb);
+	if (ret < 0)
 		goto free_urbp;
 
-	if ((ret = usbip_recv_iso(&udc->ud, urb_p->urb)) < 0)
+	ret = usbip_recv_iso(&udc->ud, urb_p->urb);
+	if (ret < 0)
 		goto free_urbp;
 
 	spin_lock_irqsave(&udc->lock, flags);
@@ -222,7 +224,8 @@ int v_rx_loop(void *data)
 	while (!kthread_should_stop()) {
 		if (usbip_event_happened(ud))
 			break;
-		if ((ret = v_rx_pdu(ud)) < 0) {
+		ret = v_rx_pdu(ud);
+		if (ret < 0) {
 			pr_warn("v_rx exit with error %d", ret);
 			break;
 		}

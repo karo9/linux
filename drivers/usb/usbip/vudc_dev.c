@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015 Karol Kosik <karo9@interia.eu>
- * 		 2015 Samsung Electronics
+ *		 2015 Samsung Electronics
  * Author:	 Igor Kotrasinski <i.kotrasinsk@samsung.com>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -105,9 +105,8 @@ static void stop_activity(struct vudc *udc)
 
 	udc->address = 0;
 
-	for (i = 0; i < VIRTUAL_ENDPOINTS; i++) {
+	for (i = 0; i < VIRTUAL_ENDPOINTS; i++)
 		nuke(udc, &udc->ep[i]);
-	}
 
 	list_for_each_entry_safe(urb_p, tmp, &udc->urb_queue, urb_entry) {
 		list_del(&urb_p->urb_entry);
@@ -181,9 +180,8 @@ static int vgadget_udc_start(struct usb_gadget *g,
 	spin_lock_irqsave(&udc->lock, flags);
 	ret = descriptor_cache(udc);
 	spin_unlock_irqrestore(&udc->lock, flags);
-	if (ret) {
+	if (ret)
 		usbip_event_add(&udc->ud, VUDC_EVENT_ERROR_USB);
-	}
 	return 0;
 }
 

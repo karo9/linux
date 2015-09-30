@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015 Karol Kosik <karo9@interia.eu>
- * 		 2015 Samsung Electronics
+ *		 2015 Samsung Electronics
  * Author:	 Igor Kotrasinski <i.kotrasinsk@samsung.com>
  *
  * Based on dummy_hcd.c, which is:
@@ -412,7 +412,7 @@ restart:
 			/*
 			 * TODO: figure out bandwidth guarantees
 			 * for now, give unlimited bandwidth
-			 * */
+			 */
 			limit += urb->transfer_buffer_length;
 			/* fallthrough */
 		default:
