@@ -31,19 +31,19 @@
 #include <net/sock.h>
 
 /* called with udc->lock held */
-static ssize_t fetch_descriptor(struct usb_ctrlrequest *req, struct vudc *cdev,
+static ssize_t fetch_descriptor(struct usb_ctrlrequest *req, struct vudc *udc,
 				char *out, ssize_t sz, ssize_t maxsz)
 {
 	struct vrequest *usb_req;
 	ssize_t ret;
 	ssize_t copysz;
-	struct vep *ep0 = to_vep(cdev->gadget.ep0);
+	struct vep *ep0 = to_vep(udc->gadget.ep0);
 
-	if (!cdev->driver)	/* No device for export */
+	if (!udc->driver)	/* No device for export */
 		return 0;
-	spin_unlock(&cdev->lock);
-	ret = cdev->driver->setup(&(cdev->gadget), req);
-	spin_lock(&cdev->lock);
+	spin_unlock(&udc->lock);
+	ret = udc->driver->setup(&(udc->gadget), req);
+	spin_lock(&udc->lock);
 	if (ret < 0)
 		goto exit;
 
@@ -68,16 +68,16 @@ exit:
 	return ret;
 }
 
-/* called with cdev->lock held */
-int descriptor_cache(struct vudc *cdev)
+/* called with udc->lock held */
+int descriptor_cache(struct vudc *udc)
 {
-	struct usb_device_descriptor *dev_d = &cdev->dev_desc;
+	struct usb_device_descriptor *dev_d = &udc->dev_desc;
 	struct usb_ctrlrequest req;
 	int ret;
 	int sz = 0;
 	int max_sz = PAGE_SIZE;
 
-	if (!cdev || !cdev->driver)
+	if (!udc || !udc->driver)
 		return -1;
 
 	req.bRequestType = USB_DIR_IN | USB_TYPE_STANDARD | USB_RECIP_DEVICE;
@@ -86,9 +86,9 @@ int descriptor_cache(struct vudc *cdev)
 	req.wIndex = cpu_to_le16(0);
 	req.wLength = cpu_to_le16(max_sz - sz);
 
-	ret = fetch_descriptor(&req, cdev, (char *) dev_d, max_sz, max_sz);
+	ret = fetch_descriptor(&req, udc, (char *) dev_d, max_sz, max_sz);
 	if (ret < 0) {
-		dev_err(&cdev->pdev->dev, "Couldn't fetch device descriptor!");
+		dev_err(&udc->pdev->dev, "Couldn't fetch device descriptor!");
 		return -1;
 	}
 	sz += ret;
@@ -102,11 +102,11 @@ int descriptor_cache(struct vudc *cdev)
 static ssize_t dev_desc_show(struct device *dev,
 			       struct device_attribute *attr, char *out)
 {
-	struct vudc *cdev = (struct vudc *) dev_get_drvdata(dev);
+	struct vudc *udc = (struct vudc *) dev_get_drvdata(dev);
 
-	if (!cdev->driver)
+	if (!udc->driver)
 		return -ENODEV;
-	memcpy(out, &cdev->dev_desc, sizeof(cdev->dev_desc));
+	memcpy(out, &udc->dev_desc, sizeof(udc->dev_desc));
 	return sizeof(struct usb_device_descriptor);
 }
 static DEVICE_ATTR_RO(dev_desc);
@@ -116,11 +116,11 @@ static ssize_t store_sockfd(struct device *dev, struct device_attribute *attr,
 {
 	int rv;
 	int sockfd = 0;
-	struct vudc *cdev = (struct vudc *) dev_get_drvdata(dev);
+	struct vudc *udc = (struct vudc *) dev_get_drvdata(dev);
 	int err;
 	struct socket *socket;
 
-	if (!cdev || !cdev->driver) { /* Don't export what we don't have */
+	if (!udc || !udc->driver) { /* Don't export what we don't have */
 		dev_err(dev, "no device or gadget not bound");
 		return -ENODEV;
 	}
@@ -130,9 +130,9 @@ static ssize_t store_sockfd(struct device *dev, struct device_attribute *attr,
 		return -EINVAL;
 
 	if (sockfd != -1) {
-		spin_lock_irq(&cdev->ud.lock);
+		spin_lock_irq(&udc->ud.lock);
 
-		if (cdev->ud.status != SDEV_ST_AVAILABLE)
+		if (udc->ud.status != SDEV_ST_AVAILABLE)
 			goto err;
 
 		socket = sockfd_lookup(sockfd, &err);
@@ -141,36 +141,36 @@ static ssize_t store_sockfd(struct device *dev, struct device_attribute *attr,
 			goto err;
 		}
 
-		cdev->ud.tcp_socket = socket;
+		udc->ud.tcp_socket = socket;
 
-		spin_unlock_irq(&cdev->ud.lock);
+		spin_unlock_irq(&udc->ud.lock);
 
-		cdev->ud.tcp_rx = kthread_get_run(&v_rx_loop,
-						    &cdev->ud, "vudc_rx");
-		cdev->ud.tcp_tx = kthread_get_run(&v_tx_loop,
-						    &cdev->ud, "vudc_tx");
+		udc->ud.tcp_rx = kthread_get_run(&v_rx_loop,
+						    &udc->ud, "vudc_rx");
+		udc->ud.tcp_tx = kthread_get_run(&v_tx_loop,
+						    &udc->ud, "vudc_tx");
 
-		spin_lock_irq(&cdev->ud.lock);
-		cdev->ud.status = SDEV_ST_USED;
-		spin_unlock_irq(&cdev->ud.lock);
+		spin_lock_irq(&udc->ud.lock);
+		udc->ud.status = SDEV_ST_USED;
+		spin_unlock_irq(&udc->ud.lock);
 
-		spin_lock_irq(&cdev->lock);
-		do_gettimeofday(&cdev->start_time);
-		v_start_timer(cdev);
-		spin_unlock_irq(&cdev->lock);
+		spin_lock_irq(&udc->lock);
+		do_gettimeofday(&udc->start_time);
+		v_start_timer(udc);
+		spin_unlock_irq(&udc->lock);
 	} else {
-		spin_lock_irq(&cdev->ud.lock);
-		if (cdev->ud.status != SDEV_ST_USED)
+		spin_lock_irq(&udc->ud.lock);
+		if (udc->ud.status != SDEV_ST_USED)
 			goto err;
-		spin_unlock_irq(&cdev->ud.lock);
+		spin_unlock_irq(&udc->ud.lock);
 
-		usbip_event_add(&cdev->ud, VUDC_EVENT_DOWN);
+		usbip_event_add(&udc->ud, VUDC_EVENT_DOWN);
 	}
 
 	return count;
 
 err:
-	spin_unlock_irq(&cdev->ud.lock);
+	spin_unlock_irq(&udc->ud.lock);
 	return -EINVAL;
 }
 static DEVICE_ATTR(usbip_sockfd, S_IWUSR, NULL, store_sockfd);
@@ -178,16 +178,16 @@ static DEVICE_ATTR(usbip_sockfd, S_IWUSR, NULL, store_sockfd);
 static ssize_t usbip_status_show(struct device *dev,
 			       struct device_attribute *attr, char *out)
 {
-	struct vudc *cdev = (struct vudc *) dev_get_drvdata(dev);
+	struct vudc *udc = (struct vudc *) dev_get_drvdata(dev);
 	int status;
 
-	if (!cdev) {
-		dev_err(&cdev->pdev->dev, "no device");
+	if (!udc) {
+		dev_err(&udc->pdev->dev, "no device");
 		return -ENODEV;
 	}
-	spin_lock_irq(&cdev->ud.lock);
-	status = cdev->ud.status;
-	spin_unlock_irq(&cdev->ud.lock);
+	spin_lock_irq(&udc->ud.lock);
+	status = udc->ud.status;
+	spin_unlock_irq(&udc->ud.lock);
 
 	return snprintf(out, PAGE_SIZE, "%d\n", status);
 }

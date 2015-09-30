@@ -49,7 +49,7 @@ struct vep {
 
 struct vrequest {
 	struct usb_request req;
-	struct vudc *cdev;
+	struct vudc *udc;
 	struct list_head req_entry; /* Request queue */
 };
 
@@ -150,13 +150,13 @@ static inline struct vudc *ep_to_vudc(struct vep *ep)
 
 /* vudc_sysfs.c */
 
-int descriptor_cache(struct vudc *cdev);
+int descriptor_cache(struct vudc *udc);
 
 /* vudc_tx.c */
 
 int v_tx_loop(void *data);
-void v_enqueue_ret_unlink(struct vudc *cdev, __u32 seqnum, __u32 status);
-void v_enqueue_ret_submit(struct vudc *cdev, struct urbp *urb_p);
+void v_enqueue_ret_unlink(struct vudc *udc, __u32 seqnum, __u32 status);
+void v_enqueue_ret_submit(struct vudc *udc, struct urbp *urb_p);
 
 /* vudc_rx.c */
 
@@ -164,17 +164,17 @@ int v_rx_loop(void *data);
 
 /* vudc_transfer.c */
 
-void v_init_timer(struct vudc *cdev);
-void v_start_timer(struct vudc *cdev);
-void v_kick_timer(struct vudc *cdev, unsigned long time);
-void v_stop_timer(struct vudc *cdev);
+void v_init_timer(struct vudc *udc);
+void v_start_timer(struct vudc *udc);
+void v_kick_timer(struct vudc *udc, unsigned long time);
+void v_stop_timer(struct vudc *udc);
 
 /* vudc_dev.c */
 
 struct urbp *alloc_urbp(void);
 void free_urbp_and_urb(struct urbp *urb_p);
 
-struct vep *find_endpoint(struct vudc *cdev, u8 address);
+struct vep *find_endpoint(struct vudc *udc, u8 address);
 
 struct vudc_device *alloc_vudc_device(int devid);
 void put_vudc_device(struct vudc_device *udc_dev);

@@ -70,33 +70,33 @@ err:
 	return -ENOMEM;
 }
 
-static int v_recv_cmd_unlink(struct vudc *cdev,
+static int v_recv_cmd_unlink(struct vudc *udc,
 				struct usbip_header *pdu)
 {
 	unsigned long flags;
 	struct urbp *urb_p;
 
-	spin_lock_irqsave(&cdev->lock, flags);
-	list_for_each_entry(urb_p, &cdev->urb_queue, urb_entry) {
+	spin_lock_irqsave(&udc->lock, flags);
+	list_for_each_entry(urb_p, &udc->urb_queue, urb_entry) {
 		if (urb_p->seqnum != pdu->u.cmd_unlink.seqnum)
 			continue;
 		urb_p->urb->unlinked = -ECONNRESET;
 		urb_p->seqnum = pdu->base.seqnum;
-		v_kick_timer(cdev, jiffies);
-		spin_unlock_irqrestore(&cdev->lock, flags);
+		v_kick_timer(udc, jiffies);
+		spin_unlock_irqrestore(&udc->lock, flags);
 		return 0;
 	}
 	/* Not found, completed / not queued */
-	spin_lock(&cdev->lock_tx);
-	v_enqueue_ret_unlink(cdev, pdu->base.seqnum, 0);
-	wake_up(&cdev->tx_waitq);
-	spin_unlock(&cdev->lock_tx);
-	spin_unlock_irqrestore(&cdev->lock, flags);
+	spin_lock(&udc->lock_tx);
+	v_enqueue_ret_unlink(udc, pdu->base.seqnum, 0);
+	wake_up(&udc->tx_waitq);
+	spin_unlock(&udc->lock_tx);
+	spin_unlock_irqrestore(&udc->lock, flags);
 
 	return 0;
 }
 
-static int v_recv_cmd_submit(struct vudc *cdev,
+static int v_recv_cmd_submit(struct vudc *udc,
 				 struct usbip_header *pdu)
 {
 	int ret = 0;
@@ -106,7 +106,7 @@ static int v_recv_cmd_submit(struct vudc *cdev,
 
 	urb_p = alloc_urbp();
 	if (!urb_p) {
-		usbip_event_add(&cdev->ud, VUDC_EVENT_ERROR_MALLOC);
+		usbip_event_add(&udc->ud, VUDC_EVENT_ERROR_MALLOC);
 		return -ENOMEM;
 	}
 
@@ -115,25 +115,25 @@ static int v_recv_cmd_submit(struct vudc *cdev,
 	if (pdu->base.direction == USBIP_DIR_IN)
 		address |= USB_DIR_IN;
 
-	spin_lock_irq(&cdev->lock);
-	urb_p->ep = find_endpoint(cdev, address);
+	spin_lock_irq(&udc->lock);
+	urb_p->ep = find_endpoint(udc, address);
 	if (!urb_p->ep) {
 		/* we don't know the type, there may be isoc data! */
-		dev_err(&cdev->pdev->dev, "request to nonexistent endpoint");
-		spin_unlock_irq(&cdev->lock);
-		usbip_event_add(&cdev->ud, VUDC_EVENT_ERROR_TCP);
+		dev_err(&udc->pdev->dev, "request to nonexistent endpoint");
+		spin_unlock_irq(&udc->lock);
+		usbip_event_add(&udc->ud, VUDC_EVENT_ERROR_TCP);
 		ret = -EPIPE;
 		goto free_urbp;
 	}
 	urb_p->type = urb_p->ep->type;
-	spin_unlock_irq(&cdev->lock);
+	spin_unlock_irq(&udc->lock);
 
 	urb_p->new = 1;
 	urb_p->seqnum = pdu->base.seqnum;
 
 	ret = alloc_urb_from_cmd(&urb_p->urb, pdu, urb_p->ep->type);
 	if (ret) {
-		usbip_event_add(&cdev->ud, VUDC_EVENT_ERROR_MALLOC);
+		usbip_event_add(&udc->ud, VUDC_EVENT_ERROR_MALLOC);
 		ret = -ENOMEM;
 		goto free_urbp;
 	}
@@ -157,16 +157,16 @@ static int v_recv_cmd_submit(struct vudc *cdev,
 		break;
 	}
 
-	if ((ret = usbip_recv_xbuff(&cdev->ud, urb_p->urb)) < 0)
+	if ((ret = usbip_recv_xbuff(&udc->ud, urb_p->urb)) < 0)
 		goto free_urbp;
 
-	if ((ret = usbip_recv_iso(&cdev->ud, urb_p->urb)) < 0)
+	if ((ret = usbip_recv_iso(&udc->ud, urb_p->urb)) < 0)
 		goto free_urbp;
 
-	spin_lock_irqsave(&cdev->lock, flags);
-	v_kick_timer(cdev, jiffies);
-	list_add_tail(&urb_p->urb_entry, &cdev->urb_queue);
-	spin_unlock_irqrestore(&cdev->lock, flags);
+	spin_lock_irqsave(&udc->lock, flags);
+	v_kick_timer(udc, jiffies);
+	list_add_tail(&urb_p->urb_entry, &udc->urb_queue);
+	spin_unlock_irqrestore(&udc->lock, flags);
 
 	return 0;
 
@@ -179,7 +179,7 @@ static int v_rx_pdu(struct usbip_device *ud)
 {
 	int ret;
 	struct usbip_header pdu;
-	struct vudc *cdev = container_of(ud, struct vudc, ud);
+	struct vudc *udc = container_of(ud, struct vudc, ud);
 
 	memset(&pdu, 0, sizeof(pdu));
 	ret = usbip_recv(ud->tcp_socket, &pdu, sizeof(pdu));
@@ -201,10 +201,10 @@ static int v_rx_pdu(struct usbip_device *ud)
 
 	switch (pdu.base.command) {
 	case USBIP_CMD_UNLINK:
-		ret = v_recv_cmd_unlink(cdev, &pdu);
+		ret = v_recv_cmd_unlink(udc, &pdu);
 		break;
 	case USBIP_CMD_SUBMIT:
-		ret = v_recv_cmd_submit(cdev, &pdu);
+		ret = v_recv_cmd_submit(udc, &pdu);
 		break;
 	default:
 		ret = -EPIPE;
