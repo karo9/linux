@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015 Karol Kosik <karo9@interia.eu>
- * 		 2015 Samsung Electronics
+ *		 2015 Samsung Electronics
  * Author:	 Igor Kotrasinski <i.kotrasinsk@samsung.com>
  *
  * Based on tools/usb/usbip/libsrc/usbip_host_driver.c, which is:

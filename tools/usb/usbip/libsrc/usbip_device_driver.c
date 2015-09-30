@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015 Karol Kosik <karo9@interia.eu>
- * 		 2015 Samsung Electronics
+ *		 2015 Samsung Electronics
  * Author:	 Igor Kotrasinski <i.kotrasinsk@samsung.com>
  *
  * Based on tools/usb/usbip/libsrc/usbip_host_driver.c, which is:
@@ -84,7 +84,7 @@ int read_usb_vudc_device(struct udev_device *sdev, struct usbip_usb_device *dev)
 	int ret = 0, i;
 	FILE *fd = NULL;
 	struct udev_device *plat;
-	const char* speed;
+	const char *speed;
 
 	plat = udev_device_get_parent(sdev);
 	path = udev_device_get_syspath(plat);

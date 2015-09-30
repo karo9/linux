@@ -34,7 +34,7 @@
 #include "list.h"
 #include "sysfs_utils.h"
 
-extern struct udev *udev_context;
+struct udev *udev_context;
 
 static int32_t read_attr_usbip_status(struct usbip_usb_device *udev)
 {
@@ -265,8 +265,7 @@ struct usbip_exported_device *usbip_common_get_device(
 		edev = list_entry(i, struct usbip_exported_device, node);
 		if (num == cnt)
 			return edev;
-		else
-			cnt++;
+		cnt++;
 	}
 
 	return NULL;
